@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Notes (Local)</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- OCR: 이미지 파일 -> 텍스트 (브라우저 내 처리) -->
+  <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+</head>
+
+<body>
+  <!-- =========================
+       Topbar (버튼은 항상 보임)
+       ========================= -->
+  <header class="topbar">
+    <div class="topbar__left">
+      <div class="brand">
+        <span class="brand__dot"></span>
+        <span class="brand__title">Book Notes</span>
+        <span class="brand__sub">2026</span>
+      </div>
+    </div>
+
+    <div class="topbar__right">
+      <button id="newBtn" class="btn">New</button>
+      <button id="saveBtn" class="btn btn--primary">Save</button>
+      <button id="viewModeBtn" class="btn">View</button>
+      <button id="editModeBtn" class="btn btn--primary">Edit</button>
+      <button id="historyBtn" class="btn">History</button>
+      <button id="deleteBtn" class="btn btn--danger">Delete</button>
+      <span class="divider"></span>
+      <button id="exportBtn" class="btn">Export</button>
+      <label class="btn file-btn">
+        Import
+        <input id="importFile" type="file" accept="application/json" />
+      </label>
+    </div>
+  </header>
+
+  <!-- =========================
+       Layout
+       (Left: view/edit)
+       (Right: current list)
+       ========================= -->
+  <main class="layout">
+    <!-- Left pane -->
+    <section class="pane pane--editor">
+      <div class="pane__inner">
+
+        <!-- ✅ View(리뷰) 모드: 기본으로 보이는 영역 -->
+        <div id="viewMode">
+          <div class="viewhead">
+            <h1 id="viewTitle" class="viewhead__title"></h1>
+            <div id="viewMeta" class="viewhead__meta"></div>
+          </div>
+          <div id="renderBox" class="render"></div>
+        </div>
+
+        <!-- ✅ Edit(편집) 모드: 처음엔 숨김, Edit 버튼 누르면 표시 -->
+        <div id="editMode" class="mode-hidden">
+          <!-- Meta -->
+          <div class="meta">
+            <div class="field">
+              <label class="label" for="titleInput">제목</label>
+              <input id="titleInput" class="input" type="text" placeholder="예: 2월의 발췌 / 단상 / 요약" />
+            </div>
+
+            <div class="field">
+              <label class="label" for="bookInput">장</label>
+              <input id="bookInput" class="input" type="text" placeholder="예: 미디어의 이해" />
+            </div>
+
+            <div class="field field--small">
+              <label class="label" for="pageInput">쪽/위치</label>
+              <input id="pageInput" class="input" type="text" placeholder="예: p.42 / Kindle loc. 1200" />
+            </div>
+          </div>
+
+          <!-- Editor + Markdown Toolbar -->
+          <div class="editor">
+            <div class="editor__head">
+              <label class="label" for="contentInput" id="editIdLabel">텍스트 (Markdown)</label>
+
+              <div class="mdbar" aria-label="markdown toolbar">
+                <button class="btn btn--chip" type="button" data-md="h1">H1</button>
+                <button class="btn btn--chip" type="button" data-md="h2">H2</button>
+                <button class="btn btn--chip" type="button" data-md="bold"><b>B</b></button>
+                <button class="btn btn--chip" type="button" data-md="italic"><i>I</i></button>
+                <button class="btn btn--chip" type="button" data-md="quote">Quote</button>
+                <button class="btn btn--chip" type="button" data-md="ul">• List</button>
+                <button class="btn btn--chip" type="button" data-md="code">`Code`</button>
+                <button class="btn btn--chip" type="button" data-md="codeblock">```</button>
+                <button class="btn btn--chip" type="button" data-md="link">Link</button>
+                </button>
+              </div>
+            </div>
+
+            <textarea id="contentInput" class="textarea"
+              placeholder="여기에 직접 타이핑하거나 OCR 결과를 붙여넣어 저장해.&#10;&#10;예시)&#10;# 제목&#10;- 메모&#10;> 인용&#10;[링크텍스트](https://example.com)&#10;[[note-xxxx]]"></textarea>
+
+            <div class="hint">
+              단축키: <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>S</kbd> 저장 ·
+              내부 링크는 <code>[[...]]</code> ·
+              렌더 프리뷰는 없고 “작성용 마크다운 문법 입력”에 집중
+            </div>
+          </div>
+
+          <!-- OCR -->
+          <section class="ocr">
+            <div class="ocr__head">
+              <h2 class="section-title">OCR (이미지 → 텍스트)</h2>
+              <div class="ocr__tools">
+                <label class="btn file-btn">
+                  이미지 선택
+                  <input id="imageFile" type="file" accept="image/*" />
+                </label>
+                <button id="runOcrBtn" class="btn" type="button">Run OCR</button>
+                <button id="appendOcrBtn" class="btn" type="button">편집기에 추가</button>
+              </div>
+            </div>
+
+            <div class="ocr__grid">
+              <div class="ocr__preview">
+                <div class="label">미리보기</div>
+                <div class="image-box">
+                  <img id="imagePreview" alt="preview" />
+                  <div id="imagePlaceholder" class="placeholder">
+                    이미지 파일을 선택하면 여기에 보여.
+                  </div>
+                </div>
+
+                <div class="progress">
+                  <div class="label">진행률</div>
+                  <div class="progressbar">
+                    <div id="progressBarInner" class="progressbar__inner"></div>
+                  </div>
+                  <div id="progressText" class="progress__text">대기 중</div>
+                </div>
+
+                <div class="hint">
+                  OCR은 **고해상도/고대비/수평**일수록 정확해져.
+                  (처리는 브라우저 안에서만 진행되고, 서버로 업로드되지 않아.)
+                </div>
+              </div>
+
+              <div class="ocr__result">
+                <div class="label">추출된 텍스트</div>
+                <textarea id="ocrOutput" class="textarea textarea--small" placeholder="OCR 결과가 여기로 들어와."></textarea>
+                <div class="hint">언어: kor + eng</div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <!-- /#editMode -->
+
+      </div>
+      <!-- /.pane__inner -->
+    </section>
+
+    <!-- Right pane: current list (항상 보임) -->
+    <aside class="pane pane--list">
+      <div class="pane__inner pane__inner--list">
+        <div class="list-head">
+          <div class="list-head__top">
+            <h2 class="section-title">Current List</h2>
+            <select id="sortSelect" class="select">
+              <option value="updatedDesc">최근 수정</option>
+              <option value="createdDesc">최근 생성</option>
+              <option value="titleAsc">제목 A→Z</option>
+            </select>
+          </div>
+
+          <input id="searchInput" class="input" type="text" placeholder="검색 (제목/책/본문)" />
+          <div id="listMeta" class="list-meta"></div>
+        </div>
+
+        <div id="itemsList" class="items"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- =========================
+       History Modal
+       ========================= -->
+  <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal__backdrop" id="historyBackdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <h3 class="modal__title">History</h3>
+        <button id="closeHistoryBtn" class="btn" type="button">Close</button>
+      </div>
+
+      <div class="modal__body">
+        <div class="history-help">
+          Save를 누를 때마다 “저장 이전 상태”가 버전으로 쌓여. 버전을 클릭하면 미리보고 Restore로 복원 가능.
+          (✅ 추가: 선택한 버전 Delete 가능)
+        </div>
+
+        <div class="history-grid">
+          <div>
+            <div class="label">버전 목록</div>
+            <div id="historyList" class="history-list"></div>
+          </div>
+
+          <div>
+            <div class="label">버전 미리보기</div>
+            <div id="historyPreview" class="history-preview"></div>
+
+            <div class="history-actions">
+              <button id="restoreVersionBtn" class="btn btn--primary" type="button" disabled>Restore</button>
+              <button id="deleteVersionBtn" class="btn btn--danger" type="button" disabled>Delete</button>
+            </div>
+
+            <div class="hint">
+              Delete는 “선택한 버전 1개”만 지워. 노트 본문 자체는 바뀌지 않아.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="projects-data.js"></script>
+  <script src="script.js"></script>
+</body>
+
+</html>
