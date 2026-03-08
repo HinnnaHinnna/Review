@@ -36,6 +36,9 @@ const WIKI_ID = "Review";
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
 const HOME_GUIDE_TITLE = "처음"; // 첫 화면으로 열 문서 제목(가이드 문서)
 
+// ✅ 문서당 리비전(히스토리) 최대 보관 개수
+const MAX_REVISIONS_PER_PAGE = 10;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -565,6 +568,7 @@ function buildList() {
 ========================= */
 async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
   if (!canEdit) return;
+
   await addDoc(revisionsCol(pageId), {
     title,
     content,
@@ -572,6 +576,31 @@ async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
     savedAt: savedAt || Date.now(),
     note: note || ""
   });
+
+  // ✅ 저장 후 오래된 리비전 정리(최신 10개만 유지)
+  await pruneRevisions(pageId);
+}
+
+// ✅ 최신 N개만 남기고 나머지 리비전 삭제
+async function pruneRevisions(pageId) {
+  try {
+    // 최신순으로 전부 가져온 뒤 10개 초과분 삭제
+    const snap = await getDocs(
+      query(revisionsCol(pageId), orderBy("savedAt", "desc"))
+    );
+
+    const docs = snap.docs;
+    if (docs.length <= MAX_REVISIONS_PER_PAGE) return;
+
+    const toDelete = docs.slice(MAX_REVISIONS_PER_PAGE);
+
+    // 순차 삭제(안정적)
+    for (const d of toDelete) {
+      await deleteDoc(d.ref);
+    }
+  } catch (e) {
+    console.warn("pruneRevisions failed:", e);
+  }
 }
 
 /* =========================
@@ -685,7 +714,9 @@ function renderSearch(q) {
 async function renderHistory(pageId) {
   viewEl.innerHTML = `<h2 class="page-title">역사</h2><p class="muted">불러오는 중...</p>`;
   try {
-    const snap = await getDocs(query(revisionsCol(pageId), orderBy("savedAt", "desc"), limit(50)));
+    const snap = await getDocs(
+      query(revisionsCol(pageId), orderBy("savedAt", "desc"), limit(MAX_REVISIONS_PER_PAGE))
+    );
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     viewEl.innerHTML = `
