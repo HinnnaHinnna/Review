@@ -214,9 +214,16 @@ function parseFrontMatter(raw) {
   return { meta, body };
 }
 function getCategory(page) {
+  const title = (page.title || "").trim();
+
+  // ✅ 가이드 문서(처음)는 분류 없음으로 고정 (원하면 지워도 됨)
+  if (title === HOME_GUIDE_TITLE) return "";
+
   const { meta } = parseFrontMatter(page.content);
   const v = (meta.category || meta.type || "").trim();
-  return v || CATEGORY_OPTIONS[0];
+
+  // ✅ category/type가 비어있으면 "없음"으로 둔다 (기본값 자동부여 X)
+  return v; // "" 가능
 }
 
 /* =========================
@@ -650,7 +657,7 @@ function buildList() {
 
   pageListEl.innerHTML = list.map(p => {
     const cat = getCategory(p);
-    const hint = `${cat} · ${formatDate(p.updatedAt || p.createdAt)}`;
+    const hint = `${cat ? cat + " · " : ""}${formatDate(p.updatedAt || p.createdAt)}`;
     return `
       <li class="page-item" data-slug="${escapeHtml(p.id)}">
         <div class="t">${escapeHtml(p.title)}</div>
