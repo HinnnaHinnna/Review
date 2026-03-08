@@ -477,3 +477,15 @@ figcaption.wiki-caption {
     width: 100%;
   }
 }
+
+/* ✅ 큰 화면에서 레이아웃 폭 제한 + 가운데 정렬 */
+@media (min-width: 961px) {
+  .layout {
+    max-width: 1200px;
+    /* 원하는 폭 */
+    margin: 0 auto;
+    /* 가운데 정렬 */
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
