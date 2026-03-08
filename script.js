@@ -241,18 +241,17 @@ function protectInlineCode(rawText) {
    Inline render
 ========================= */
 function renderInline(text) {
+  // 0) 원문
   let raw = String(text || "");
 
-  // comments remove
-  raw = raw.replace(/<!--[\s\S]*?-->/g, "");
-
-  // 스마트 따옴표 방지(혹시 복붙으로 들어오면 강제 교정)
-  raw = raw.replace(/[\u2018\u2019]/g, "'");
-
-  // protect inline code
-  const protectedResult = protectInlineCode(raw);
+  // ✅ 0.5) 인라인 코드 먼저 보호 (코드 안은 절대 건드리지 않기)
+  const protectedResult = protectInlineCode(raw); // (너 기존 함수 그대로 사용)
   raw = protectedResult.text;
   const codes = protectedResult.codes;
+
+  // ✅ 1) 그 다음에 주석 제거/스마트따옴표 교정
+  raw = raw.replace(/<!--[\s\S]*?-->/g, "");
+  raw = raw.replace(/[\u2018\u2019]/g, "'");
 
   let t = escapeHtml(raw);
 
@@ -415,23 +414,87 @@ function consumeMwList(lines, startIndex) {
 /* =========================
    Block render (supports fenced code)
 ========================= */
+
+// ✅ (A) 전체 텍스트에서 인라인 코드(`...`)를 먼저 보호했다가 다시 되돌리기
+function protectInlineCodeWholeText(text) {
+  const codes = [];
+  const out = String(text || "").replace(/`([^`\n]+)`/g, (m, inner) => {
+    const idx = codes.length;
+    codes.push(inner);
+    return `{{INLINECODE:${idx}}}`;
+  });
+  return { text: out, codes };
+}
+
+function restoreInlineCodeWholeText(text, codes) {
+  return String(text || "").replace(/\{\{INLINECODE:(\d+)\}\}/g, (m, n) => {
+    const idx = Number(n);
+    const inner = codes[idx] ?? "";
+    return "`" + inner + "`";
+  });
+}
+
+// ✅ (B) 코드블록(```/~~~)을 먼저 보호해서 토큰으로 바꿔둠
+function extractFencedCodeBlocks(lines) {
+  const blocks = [];
+  const outLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.trim().match(/^(```|~~~)/);
+    if (!m) {
+      outLines.push(line);
+      continue;
+    }
+
+    const fence = m[1]; // ``` 또는 ~~~
+    const codeLines = [];
+
+    i++; // 시작 줄 다음부터 수집
+    while (i < lines.length && !lines[i].trim().startsWith(fence)) {
+      codeLines.push(lines[i]);
+      i++;
+    }
+    // i는 닫는 fence 줄에 와 있음(있다면). for-loop의 i++로 자연스럽게 스킵됨.
+
+    const id = blocks.length;
+    blocks.push(codeLines.join("\n"));
+    outLines.push(`{{CODEBLOCK:${id}}}`);
+  }
+
+  return { lines: outLines, blocks };
+}
+
 function renderWiki(body) {
-  let text = String(body || "");
+  // 0) 원문 → 줄 단위
+  const originalLines = String(body || "").replaceAll("\r\n", "\n").split("\n");
 
-  // comments remove
+  // ✅ 1) 코드블록을 먼저 보호
+  const extracted = extractFencedCodeBlocks(originalLines);
+  let text = extracted.lines.join("\n");
+  const codeBlocks = extracted.blocks;
+
+  // ✅ 2) 인라인 백틱(`...`)도 먼저 보호 (ref/주석 처리에서 제외)
+  const inlineProtected = protectInlineCodeWholeText(text);
+  text = inlineProtected.text;
+  const inlineCodes = inlineProtected.codes;
+
+  // ✅ 3) 이제 코드가 아닌 영역에서만 주석 제거 + 스마트따옴표 교정
   text = text.replace(/<!--[\s\S]*?-->/g, "");
-
-  // 스마트 따옴표 교정(혹시 전체 본문에 섞인 경우)
   text = text.replace(/[\u2018\u2019]/g, "'");
 
-  // refs
+  // ✅ 4) 코드가 아닌 영역에서만 <ref> 추출
   __REFS = [];
   text = text.replace(/<ref>([\s\S]*?)<\/ref>/gi, (m, inner) => {
     __REFS.push((inner || "").trim());
     return `{{REF:${__REFS.length}}}`;
   });
 
-  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  // ✅ 5) 인라인 코드 토큰을 다시 백틱 형태로 복원 (이후 renderInline이 처리)
+  text = restoreInlineCodeWholeText(text, inlineCodes);
+
+  // 6) 다시 줄 단위로 파싱
+  const lines = text.split("\n");
   const out = [];
   let i = 0;
 
@@ -440,22 +503,17 @@ function renderWiki(body) {
 
     if (!line.trim()) { i++; continue; }
 
-    // fenced code: ``` or ~~~ (```lang도 허용)
-    const fenceStart = line.trim().match(/^(```|~~~)/);
-    if (fenceStart) {
-      const fence = fenceStart[1];
-      const codeLines = [];
+    // ✅ 6.1) 보호된 코드블록 토큰 복원 (여기서는 어떤 문법도 적용하지 않음)
+    const cb = line.trim().match(/^\{\{CODEBLOCK:(\d+)\}\}$/);
+    if (cb) {
+      const idx = Number(cb[1]);
+      const codeText = codeBlocks[idx] ?? "";
+      out.push(`<pre class="code-block"><code>${escapeHtml(codeText)}</code></pre>`);
       i++;
-      while (i < lines.length && !lines[i].trim().startsWith(fence)) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      if (i < lines.length && lines[i].trim().startsWith(fence)) i++;
-      out.push(`<pre class="code-block"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
       continue;
     }
 
-    // <references/>
+    // 6.2) <references/>
     if (/^<references\s*\/\s*>$/i.test(line.trim())) {
       if (!__REFS.length) {
         out.push(`<p class="muted">각주가 아직 없습니다.</p>`);
@@ -470,7 +528,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // headings == ==
+    // 6.3) 미디어위키 제목 == ==
     const mwHeading = line.match(/^(={2,6})\s*(.+?)\s*\1\s*$/);
     if (mwHeading) {
       const level = Math.min(6, Math.max(2, mwHeading[1].length));
@@ -479,14 +537,14 @@ function renderWiki(body) {
       continue;
     }
 
-    // HR
+    // 6.4) 구분선
     if (line.trim() === "---") {
       out.push("<hr />");
       i++;
       continue;
     }
 
-    // lists (* / #)
+    // 6.5) 리스트(* / #)
     if (/^[*#]+\s+/.test(line)) {
       const { html, nextIndex } = consumeMwList(lines, i);
       out.push(html);
@@ -494,7 +552,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // quote >
+    // 6.6) 인용 >
     if (line.startsWith(">")) {
       const buf = [];
       while (i < lines.length && lines[i].startsWith(">")) {
@@ -505,7 +563,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // paragraph
+    // 6.7) 문단
     const buf = [];
     while (i < lines.length && lines[i].trim()) {
       buf.push(lines[i]);
