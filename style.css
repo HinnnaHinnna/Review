@@ -164,9 +164,10 @@ pre.code-block {
 
 /* ✅ 카테고리 칩 hover 시 --link 색으로 */
 .chip:hover {
-  background: var(--link);
-  border-color: var(--link);
-  color: #fff;
+  border-color: #d6d6d6;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 4px;
   /* 배경이 진해지니까 글자는 흰색 추천 */
 }
 
