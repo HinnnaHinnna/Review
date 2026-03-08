@@ -3,9 +3,9 @@
   --text: #0b0b0b;
   --muted: #6b6b6b;
   --line: #e9e9e9;
-  --link: #ff00e1;
+  --link: #0008ff;
   --chip-bg: #f3f3f3;
-  --chip-active: #cecece;
+  --chip-active: #e8e8ff;
   --content-max: 860px;
   --side-w: 280px;
   --radius: 12px;
@@ -249,7 +249,7 @@ ol {
   margin: 0 0 14px 18px
 }
 
-/* 위키 각주 */
+/* 각주 */
 sup.ref {
   font-size: 12px;
   vertical-align: super
@@ -261,6 +261,31 @@ ol.reflist {
 
 ol.reflist li {
   margin-bottom: 6px
+}
+
+/* ✅ 코드(입력 예시) 스타일 */
+code.inline-code {
+  background: #f7f7f7;
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.95em;
+}
+
+pre.code-block {
+  background: #f7f7f7;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  border-radius: 12px;
+  overflow: auto;
+  margin: 0 0 14px 0;
+}
+
+pre.code-block code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  white-space: pre;
 }
 
 /* editor */
@@ -280,7 +305,7 @@ ol.reflist li {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: 15px;
-  outline: none
+  outline: none;
 }
 
 .editor textarea {
@@ -293,7 +318,7 @@ ol.reflist li {
   font-size: 14px;
   line-height: 1.6;
   outline: none;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .editor .editor-actions {
