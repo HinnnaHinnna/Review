@@ -4,6 +4,7 @@
   --muted: #6b6b6b;
   --line: #e9e9e9;
   --link: #ff00ea;
+  --links: #fc5eef;
   --chip-bg: #f3f3f3;
   --chip-active: #a3a3a3;
   --content-max: 860px;
@@ -164,18 +165,16 @@ pre.code-block {
 
 /* ✅ 카테고리 칩 hover 시 --link 색으로 */
 .chip:hover {
-  border-color: #d6d6d6;
-  text-decoration: underline;
-  text-decoration-color: var(--link);
-  text-underline-offset: 4px;
+  background: var(--links);
+  border-color: var(--links);
+  color: #fff;
   /* 배경이 진해지니까 글자는 흰색 추천 */
 }
 
 .chip:not(.is-active):hover {
-  border-color: #d6d6d6;
-  text-decoration: underline;
-  text-decoration-color: var(--link);
-  text-underline-offset: 4px;
+  background: var(--links);
+  border-color: var(--links);
+  color: #fff;
 }
 
 .chip.is-active {
