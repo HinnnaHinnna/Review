@@ -304,13 +304,17 @@ function renderInline(text) {
     const raw2 = (inner || "").trim();
 
     if (raw2.includes("|")) {
-      const [labelRaw, targetRaw] = raw2.split("|");
-      const label = (labelRaw || "").trim();
+      // ✅ MediaWiki 규칙: [[target|label]]
+      const [targetRaw, labelRaw] = raw2.split("|");
       const target = (targetRaw || "").trim();
+      const label = (labelRaw || "").trim();
 
+      // 외부 URL이면 target이 URL인 경우만 외부링크로 처리
       if (isUrlLike(target)) {
         return `<a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label || target)}</a>`;
       }
+
+      // 내부 문서 링크
       return `<a href="#/page/${toDocId(target)}">${escapeHtml(label || target)}</a>`;
     }
 
