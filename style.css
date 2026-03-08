@@ -22,7 +22,33 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", Segoe UI, Roboto, Arial, sans-serif;
-  line-height: 1.6
+  line-height: 1.6;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ✅ Grid/Flex 아이템이 내용 때문에 폭을 못 줄이는 문제 해결 */
+.layout>* {
+  min-width: 0;
+}
+
+/* ✅ 긴 URL/긴 단어가 화면을 늘리지 않도록 */
+.doc,
+.doc * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ✅ 링크도 길면 줄바꿈 */
+.doc a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ✅ 코드블록은 박스 안에서만 스크롤 */
+pre.code-block {
+  max-width: 100%;
+  overflow: auto;
 }
 
 .muted {
@@ -440,5 +466,14 @@ figcaption.wiki-caption {
 
   .auth-pill {
     max-width: 20vw;
+  }
+
+  /* ✅ 상단 영역이 길어서 밀리는 경우 */
+  .top-inner {
+    flex-wrap: wrap;
+  }
+
+  .top-nav {
+    width: 100%;
   }
 }
