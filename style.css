@@ -99,7 +99,10 @@ pre.code-block {
 }
 
 .nav-btn:hover {
-  border-color: #d6d6d6
+  border-color: #d6d6d6;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 5px;
 }
 
 .auth-pill {
@@ -190,7 +193,10 @@ pre.code-block {
 }
 
 .page-item:hover {
-  border-color: #d6d6d6
+  border-color: #d6d6d6;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 5px;
 }
 
 .page-item .t {
@@ -223,7 +229,7 @@ a {
 a:hover {
   text-decoration: underline;
   text-decoration-color: var(--link);
-  text-underline-offset: 3px;
+  text-underline-offset: 5px;
 }
 
 .page-title {
@@ -261,7 +267,10 @@ a:hover {
 }
 
 .tool-link:hover {
-  border-color: #d6d6d6
+  border-color: #d6d6d6;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 5px;
 }
 
 hr {
