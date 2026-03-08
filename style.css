@@ -102,7 +102,7 @@ pre.code-block {
   border-color: #d6d6d6;
   text-decoration: underline;
   text-decoration-color: var(--link);
-  text-underline-offset: 5px;
+  text-underline-offset: 4px;
 }
 
 .auth-pill {
@@ -229,7 +229,7 @@ a {
 a:hover {
   text-decoration: underline;
   text-decoration-color: var(--link);
-  text-underline-offset: 5px;
+  text-underline-offset: 4px;
 }
 
 .page-title {
@@ -270,7 +270,7 @@ a:hover {
   border-color: #d6d6d6;
   text-decoration: underline;
   text-decoration-color: var(--link);
-  text-underline-offset: 5px;
+  text-underline-offset: 4px;
 }
 
 hr {
