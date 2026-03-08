@@ -414,6 +414,10 @@ figcaption.wiki-caption {
 }
 
 @media (max-width:960px) {
+  .site-title {
+    font-size: 22px;
+  }
+
   .layout {
     grid-template-columns: 1fr
   }
