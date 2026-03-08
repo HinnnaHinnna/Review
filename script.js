@@ -990,7 +990,6 @@ function renderEditor({ mode, slug }) {
       <div class="editor-actions">
         <button class="btn primary" type="button" id="save-btn">저장</button>
         <button class="btn" type="button" id="cancel-btn">취소</button>
-        <button class="btn" type="button" id="upload-img-btn">이미지 업로드</button>
         <input id="upload-img-input" type="file" accept="image/*" style="display:none" />
       </div>
     </div>
