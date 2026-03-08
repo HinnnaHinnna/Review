@@ -1,24 +1,45 @@
 /* =========================================================
   Review Wiki
-  - 공개 읽기 + 로그인 편집(여러 사람 가능)
-  - 히스토리(리비전) 보기 + 리비전 상세 + 되돌리기(revert)
-  - ✅ 히스토리는 문서당 10개만 유지
+  - Public read + Google login edit
+  - History (revisions) view + revision detail + revert
+  - Keep only latest 10 revisions per page
+  - ✅ Remove "처음" button next to Edit/History
+  - ✅ Add "문서 삭제" button next to Edit/History
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-  getRedirectResult, onAuthStateChanged, signOut
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
+  signOut
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, setDoc, getDocs, addDoc, getDoc, deleteDoc,
-  query, orderBy, limit, onSnapshot
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  addDoc,
+  getDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  limit,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 import {
-  getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-storage.js";
 
-/* ✅ 너 Firebase config */
+/* ✅ Firebase config */
 const firebaseConfig = {
   apiKey: "AIzaSyASuyxEO3eBSmJmPwV7ZVxG6rb109G_1nE",
   authDomain: "sunday-book-club.firebaseapp.com",
@@ -31,11 +52,7 @@ const firebaseConfig = {
 
 const WIKI_ID = "Review";
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
-
-/* ✅ 첫 화면에서 열 가이드 문서 제목 */
 const HOME_GUIDE_TITLE = "처음";
-
-/* ✅ 문서당 히스토리 최대 개수 */
 const MAX_REVISIONS_PER_PAGE = 10;
 
 const app = initializeApp(firebaseConfig);
@@ -59,21 +76,20 @@ let images = {};
 let currentFilter = "all";
 let sideQuery = "";
 
-/* For one render pass */
+/* One render pass */
 let __REFS = [];
 
 /* =========================
    Helpers
 ========================= */
 function escapeHtml(s) {
-  // ✅ 작은따옴표(')는 미디어위키 강조문법 때문에 변환하지 않음
+  // ✅ keep ' for MediaWiki emphasis ('' / ''')
   return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
-
 function formatDate(ms) {
   const d = new Date(ms || Date.now());
   const y = d.getFullYear();
@@ -83,12 +99,10 @@ function formatDate(ms) {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
-
 function toDocId(title) {
   const t = (title || "").trim().replace(/\s+/g, "-");
   return encodeURIComponent(t);
 }
-
 function isUrlLike(s) {
   return /^https?:\/\//i.test(s) || /^data:image\//i.test(s);
 }
@@ -134,7 +148,6 @@ async function ensureSeededOnce() {
       updatedBy: currentUser?.email || "unknown"
     });
 
-    // seed도 최초 리비전으로 기록
     await addRevision(id, {
       title: p.title,
       content: p.content || "",
@@ -200,7 +213,6 @@ function parseFrontMatter(raw) {
 
   return { meta, body };
 }
-
 function getCategory(page) {
   const { meta } = parseFrontMatter(page.content);
   const v = (meta.category || meta.type || "").trim();
@@ -208,7 +220,7 @@ function getCategory(page) {
 }
 
 /* =========================
-   Image render
+   Render helpers
 ========================= */
 function renderImageFigure(src, caption) {
   const safeSrc = escapeHtml(src);
@@ -224,12 +236,9 @@ function renderImageFigure(src, caption) {
   `;
 }
 
-/* =========================
-   Inline code protection: `...`
-========================= */
 function protectInlineCode(rawText) {
   const codes = [];
-  const replaced = rawText.replace(/`([^`\n]+)`/g, (m, inner) => {
+  const replaced = String(rawText || "").replace(/`([^`\n]+)`/g, (m, inner) => {
     const idx = codes.length;
     codes.push(inner);
     return `{{CODE:${idx}}}`;
@@ -237,20 +246,17 @@ function protectInlineCode(rawText) {
   return { text: replaced, codes };
 }
 
-/* =========================
-   Inline render
-========================= */
 function renderInline(text) {
-  // 0) 원문
   let raw = String(text || "");
 
-  // ✅ 0.5) 인라인 코드 먼저 보호 (코드 안은 절대 건드리지 않기)
-  const protectedResult = protectInlineCode(raw); // (너 기존 함수 그대로 사용)
+  // ✅ do NOT touch code first
+  const protectedResult = protectInlineCode(raw);
   raw = protectedResult.text;
   const codes = protectedResult.codes;
 
-  // ✅ 1) 그 다음에 주석 제거/스마트따옴표 교정
+  // remove html comments (outside code)
   raw = raw.replace(/<!--[\s\S]*?-->/g, "");
+  // normalize smart quotes
   raw = raw.replace(/[\u2018\u2019]/g, "'");
 
   let t = escapeHtml(raw);
@@ -267,7 +273,7 @@ function renderInline(text) {
   t = t.replace(/'''(.+?)'''/g, "<strong>$1</strong>");
   t = t.replace(/''(.+?)''/g, "<em>$1</em>");
 
-  // Markdown emphasis (옵션)
+  // Markdown emphasis (optional)
   t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
@@ -298,22 +304,18 @@ function renderInline(text) {
     return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l)}</a>`;
   });
 
-  // Wiki link
+  // Wiki link: MediaWiki rule [[target|label]]
   t = t.replace(/\[\[([^\]]+)\]\]/g, (m, inner) => {
     const raw2 = (inner || "").trim();
 
     if (raw2.includes("|")) {
-      // ✅ MediaWiki 규칙: [[target|label]]
       const [targetRaw, labelRaw] = raw2.split("|");
       const target = (targetRaw || "").trim();
       const label = (labelRaw || "").trim();
 
-      // 외부 URL이면 target이 URL인 경우만 외부링크로 처리
       if (isUrlLike(target)) {
         return `<a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label || target)}</a>`;
       }
-
-      // 내부 문서 링크
       return `<a href="#/page/${toDocId(target)}">${escapeHtml(label || target)}</a>`;
     }
 
@@ -335,7 +337,7 @@ function renderInline(text) {
     return `${lead}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
 
-  // restore inline code at the end
+  // restore inline code
   t = t.replace(/\{\{CODE:(\d+)\}\}/g, (m, idxStr) => {
     const idx = Number(idxStr);
     const codeRaw = codes[idx] ?? "";
@@ -345,9 +347,32 @@ function renderInline(text) {
   return t;
 }
 
-/* =========================
-   MediaWiki list (* / #)
-========================= */
+function extractFencedCodeBlocks(lines) {
+  const blocks = [];
+  const outLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.trim().match(/^(```|~~~)/);
+    if (!m) {
+      outLines.push(line);
+      continue;
+    }
+    const fence = m[1];
+    const codeLines = [];
+    i++;
+    while (i < lines.length && !lines[i].trim().startsWith(fence)) {
+      codeLines.push(lines[i]);
+      i++;
+    }
+    const id = blocks.length;
+    blocks.push(codeLines.join("\n"));
+    outLines.push(`{{CODEBLOCK:${id}}}`);
+  }
+
+  return { lines: outLines, blocks };
+}
+
 function consumeMwList(lines, startIndex) {
   let i = startIndex;
   const out = [];
@@ -411,89 +436,27 @@ function consumeMwList(lines, startIndex) {
   return { html: out.join(""), nextIndex: i };
 }
 
-/* =========================
-   Block render (supports fenced code)
-========================= */
-
-// ✅ (A) 전체 텍스트에서 인라인 코드(`...`)를 먼저 보호했다가 다시 되돌리기
-function protectInlineCodeWholeText(text) {
-  const codes = [];
-  const out = String(text || "").replace(/`([^`\n]+)`/g, (m, inner) => {
-    const idx = codes.length;
-    codes.push(inner);
-    return `{{INLINECODE:${idx}}}`;
-  });
-  return { text: out, codes };
-}
-
-function restoreInlineCodeWholeText(text, codes) {
-  return String(text || "").replace(/\{\{INLINECODE:(\d+)\}\}/g, (m, n) => {
-    const idx = Number(n);
-    const inner = codes[idx] ?? "";
-    return "`" + inner + "`";
-  });
-}
-
-// ✅ (B) 코드블록(```/~~~)을 먼저 보호해서 토큰으로 바꿔둠
-function extractFencedCodeBlocks(lines) {
-  const blocks = [];
-  const outLines = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const m = line.trim().match(/^(```|~~~)/);
-    if (!m) {
-      outLines.push(line);
-      continue;
-    }
-
-    const fence = m[1]; // ``` 또는 ~~~
-    const codeLines = [];
-
-    i++; // 시작 줄 다음부터 수집
-    while (i < lines.length && !lines[i].trim().startsWith(fence)) {
-      codeLines.push(lines[i]);
-      i++;
-    }
-    // i는 닫는 fence 줄에 와 있음(있다면). for-loop의 i++로 자연스럽게 스킵됨.
-
-    const id = blocks.length;
-    blocks.push(codeLines.join("\n"));
-    outLines.push(`{{CODEBLOCK:${id}}}`);
-  }
-
-  return { lines: outLines, blocks };
-}
-
 function renderWiki(body) {
-  // 0) 원문 → 줄 단위
   const originalLines = String(body || "").replaceAll("\r\n", "\n").split("\n");
 
-  // ✅ 1) 코드블록을 먼저 보호
+  // 1) protect fenced code blocks first
   const extracted = extractFencedCodeBlocks(originalLines);
   let text = extracted.lines.join("\n");
   const codeBlocks = extracted.blocks;
 
-  // ✅ 2) 인라인 백틱(`...`)도 먼저 보호 (ref/주석 처리에서 제외)
-  const inlineProtected = protectInlineCodeWholeText(text);
-  text = inlineProtected.text;
-  const inlineCodes = inlineProtected.codes;
-
-  // ✅ 3) 이제 코드가 아닌 영역에서만 주석 제거 + 스마트따옴표 교정
-  text = text.replace(/<!--[\s\S]*?-->/g, "");
+  // 2) normalize smart quotes
   text = text.replace(/[\u2018\u2019]/g, "'");
 
-  // ✅ 4) 코드가 아닌 영역에서만 <ref> 추출
+  // 3) remove html comments (outside code blocks only)
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+
+  // 4) refs (outside code blocks only)
   __REFS = [];
   text = text.replace(/<ref>([\s\S]*?)<\/ref>/gi, (m, inner) => {
     __REFS.push((inner || "").trim());
     return `{{REF:${__REFS.length}}}`;
   });
 
-  // ✅ 5) 인라인 코드 토큰을 다시 백틱 형태로 복원 (이후 renderInline이 처리)
-  text = restoreInlineCodeWholeText(text, inlineCodes);
-
-  // 6) 다시 줄 단위로 파싱
   const lines = text.split("\n");
   const out = [];
   let i = 0;
@@ -503,7 +466,7 @@ function renderWiki(body) {
 
     if (!line.trim()) { i++; continue; }
 
-    // ✅ 6.1) 보호된 코드블록 토큰 복원 (여기서는 어떤 문법도 적용하지 않음)
+    // restore code blocks
     const cb = line.trim().match(/^\{\{CODEBLOCK:(\d+)\}\}$/);
     if (cb) {
       const idx = Number(cb[1]);
@@ -513,7 +476,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // 6.2) <references/>
+    // <references/>
     if (/^<references\s*\/\s*>$/i.test(line.trim())) {
       if (!__REFS.length) {
         out.push(`<p class="muted">각주가 아직 없습니다.</p>`);
@@ -528,7 +491,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // 6.3) 미디어위키 제목 == ==
+    // headings == ==
     const mwHeading = line.match(/^(={2,6})\s*(.+?)\s*\1\s*$/);
     if (mwHeading) {
       const level = Math.min(6, Math.max(2, mwHeading[1].length));
@@ -537,14 +500,14 @@ function renderWiki(body) {
       continue;
     }
 
-    // 6.4) 구분선
+    // HR
     if (line.trim() === "---") {
       out.push("<hr />");
       i++;
       continue;
     }
 
-    // 6.5) 리스트(* / #)
+    // lists
     if (/^[*#]+\s+/.test(line)) {
       const { html, nextIndex } = consumeMwList(lines, i);
       out.push(html);
@@ -552,7 +515,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // 6.6) 인용 >
+    // quote
     if (line.startsWith(">")) {
       const buf = [];
       while (i < lines.length && lines[i].startsWith(">")) {
@@ -563,45 +526,16 @@ function renderWiki(body) {
       continue;
     }
 
-    // 6.7) 문단
+    // paragraph
     const buf = [];
     while (i < lines.length && lines[i].trim()) {
       buf.push(lines[i]);
       i++;
     }
-    out.push(`<p>${renderParagraph(buf)}</p>`);
+    out.push(`<p>${renderInline(buf.join(" "))}</p>`);
   }
 
   return out.join("\n");
-}
-
-function renderParagraph(linesBuf) {
-  const pieces = [];
-
-  for (let idx = 0; idx < linesBuf.length; idx++) {
-    let line = String(linesBuf[idx] ?? "");
-
-    // ✅ (A) 줄 끝에 \\ 가 있으면 강제 줄바꿈
-    let hardBreak = /\\\\\s*$/.test(line);
-    if (hardBreak) line = line.replace(/\\\\\s*$/, "");
-
-    // ✅ (B) 줄 끝 공백 2칸(또는 그 이상)도 강제 줄바꿈
-    // (A가 있으면 이미 hardBreak라서 그대로 유지)
-    if (!hardBreak && /\s{2,}$/.test(line)) {
-      hardBreak = true;
-      line = line.replace(/\s{2,}$/, "");
-    }
-
-    // 렌더
-    pieces.push(renderInline(line));
-
-    // 다음 줄 연결 방식
-    if (idx < linesBuf.length - 1) {
-      pieces.push(hardBreak ? "<br>" : " ");
-    }
-  }
-
-  return pieces.join("");
 }
 
 /* =========================
@@ -633,8 +567,44 @@ async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
     note: note || ""
   });
 
-  // ✅ 최신 10개만 유지
   await pruneRevisions(pageId);
+}
+
+/* ✅ 문서 삭제: 문서 + 해당 문서의 revisions 전부 삭제 */
+async function deleteAllRevisions(pageId) {
+  // Firestore는 subcollection 자동 삭제가 없어서 직접 지워야 함
+  // (현재는 최대 10개만 유지하지만, 혹시 기존 데이터가 많을 수도 있어서 반복 삭제)
+  while (true) {
+    const snap = await getDocs(query(revisionsCol(pageId), limit(50)));
+    if (snap.empty) break;
+    for (const d of snap.docs) {
+      await deleteDoc(d.ref);
+    }
+  }
+}
+
+async function deletePageCompletely(pageId) {
+  if (!canEdit) {
+    alert("삭제하려면 로그인해야 해.");
+    return;
+  }
+
+  const page = pages.find(p => p.id === pageId);
+  const title = page?.title || pageId;
+
+  const ok = confirm(`정말로 삭제할까?\n\n- 문서: ${title}\n- 히스토리도 함께 삭제됨\n\n이 작업은 되돌리기 어렵다.`);
+  if (!ok) return;
+
+  try {
+    await deleteAllRevisions(pageId);
+    await deleteDoc(pageDoc(pageId));
+
+    // 화면 이동: 가이드 홈(또는 최근)
+    location.hash = "#/";
+  } catch (e) {
+    console.error(e);
+    alert("삭제 실패(권한/네트워크/Rules 확인)");
+  }
 }
 
 /* =========================
@@ -731,10 +701,7 @@ function renderGuideHome() {
 }
 
 function renderRecent() {
-  const recent = [...pages]
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-    .slice(0, 10);
-
+  const recent = [...pages].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10);
   viewEl.innerHTML = `
     <h2 class="page-title">최근</h2>
     <ul>
@@ -743,8 +710,8 @@ function renderRecent() {
   `;
 }
 
-function renderPage(slug) {
-  const page = pages.find(p => p.id === slug);
+function renderPage(pageId) {
+  const page = pages.find(p => p.id === pageId);
   if (!page) {
     viewEl.innerHTML = `<h2 class="page-title">없음</h2><p>문서를 찾지 못했어.</p>`;
     return;
@@ -767,18 +734,25 @@ function renderPage(slug) {
 
     <div class="tools-row">
       <button class="tool-link" type="button" id="edit-btn">편집</button>
-      <button class="tool-link" type="button" id="history-btn">히스토리</button>
-      <button class="tool-link" type="button" onclick="location.hash='#/'">처음</button>
+      <button class="tool-link" type="button" id="history-btn">역사</button>
+      ${canEdit ? `<button class="tool-link" type="button" id="delete-btn">문서 삭제</button>` : ""}
     </div>
   `;
 
   document.getElementById("edit-btn").addEventListener("click", () => {
     if (!canEdit) return alert("편집하려면 로그인해야 해.");
-    location.hash = `#/edit/${slug}`;
+    location.hash = `#/edit/${pageId}`;
   });
+
   document.getElementById("history-btn").addEventListener("click", () => {
-    location.hash = `#/history/${slug}`;
+    location.hash = `#/history/${pageId}`;
   });
+
+  if (canEdit) {
+    document.getElementById("delete-btn").addEventListener("click", () => {
+      deletePageCompletely(pageId);
+    });
+  }
 }
 
 function renderSearch(q) {
@@ -812,10 +786,10 @@ function renderSearch(q) {
 }
 
 /* =========================
-   ✅ History + Revision detail + Revert
+   History + Revision detail + Revert
 ========================= */
 async function renderHistory(pageId) {
-  viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p class="muted">불러오는 중...</p>`;
+  viewEl.innerHTML = `<h2 class="page-title">역사</h2><p class="muted">불러오는 중...</p>`;
 
   try {
     const snap = await getDocs(
@@ -824,7 +798,7 @@ async function renderHistory(pageId) {
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     viewEl.innerHTML = `
-      <h2 class="page-title">히스토리</h2>
+      <h2 class="page-title">역사</h2>
       <p class="muted">최신 ${MAX_REVISIONS_PER_PAGE}개</p>
 
       ${rows.length ? `
@@ -846,7 +820,7 @@ async function renderHistory(pageId) {
     `;
   } catch (e) {
     console.error(e);
-    viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p>불러오지 못했어.</p>`;
+    viewEl.innerHTML = `<h2 class="page-title">역사</h2><p>불러오지 못했어.</p>`;
   }
 }
 
@@ -873,7 +847,7 @@ async function renderRevision(pageId, revId) {
       <div class="doc">${renderWiki(String(r.content || ""))}</div>
 
       <div class="tools-row">
-        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">히스토리로</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">역사로</button>
         <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
         ${canEdit ? `<button class="tool-link" type="button" id="revert-btn">이 버전으로 되돌리기</button>` : ""}
       </div>
@@ -884,10 +858,9 @@ async function renderRevision(pageId, revId) {
         const ok = confirm("현재 문서를 이 리비전으로 되돌릴까? (되돌리기도 히스토리에 기록됨)");
         if (!ok) return;
 
-        // 현재 문서의 createdAt 유지
         const current = pages.find(p => p.id === pageId);
         const createdAt = current?.createdAt || Date.now();
-        const title = current?.title || r.title || "(untitled)";
+        const title = current?.title || "(untitled)";
         const now = Date.now();
 
         await setDoc(pageDoc(pageId), {
@@ -898,7 +871,6 @@ async function renderRevision(pageId, revId) {
           updatedBy: currentUser?.email || "unknown"
         });
 
-        // 되돌리기 자체도 새 리비전으로 기록
         await addRevision(pageId, {
           title,
           content: String(r.content || ""),
@@ -983,7 +955,7 @@ function renderEditor({ mode, slug }) {
       <h2 class="page-title">편집하려면 로그인</h2>
       <div class="tools-row">
         <button class="tool-link" type="button" id="login-now">로그인</button>
-        <button class="tool-link" type="button" onclick="location.hash='#/'">처음</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/'">닫기</button>
       </div>
     `;
     document.getElementById("login-now").addEventListener("click", login);
