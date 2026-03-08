@@ -169,12 +169,15 @@ body {
 
 .page-item .t {
   font-weight: 700;
-  font-size: 13px
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .page-item .m {
   color: var(--muted);
-  font-size: 12px
+  font-size: 9px letter-spacing:0.01em;
 }
 
 .content {
