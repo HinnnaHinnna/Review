@@ -177,7 +177,8 @@ body {
 
 .page-item .m {
   color: var(--muted);
-  font-size: 9px letter-spacing:0.01em;
+  font-size: 9px;
+  letter-spacing: 0.01em;
 }
 
 .content {
