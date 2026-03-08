@@ -1,11 +1,8 @@
 /* =========================================================
-  Review Wiki (Public read + Google login edit)
-  - MediaWiki-ish parsing:
-    == Heading ==, '''bold''', ''italic'',
-    [https://url label], <!-- comment -->,
-    <ref>..</ref> + <references/>,
-    * / # list,
-    fenced code blocks ``` ``` and ~~~ ~~~
+  Review Wiki
+  - 공개 읽기 + 로그인 편집(여러 사람 가능)
+  - 역사(리비전) 보기 + 리비전 상세 + 되돌리기(revert)
+  - ✅ 히스토리는 문서당 10개만 유지
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
@@ -14,8 +11,8 @@ import {
   getRedirectResult, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, setDoc, getDocs, addDoc, getDoc,
-  deleteDoc, query, orderBy, limit, onSnapshot
+  getFirestore, collection, doc, setDoc, getDocs, addDoc, getDoc, deleteDoc,
+  query, orderBy, limit, onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject
@@ -34,9 +31,11 @@ const firebaseConfig = {
 
 const WIKI_ID = "Review";
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
-const HOME_GUIDE_TITLE = "처음"; // 첫 화면으로 열 문서 제목(가이드 문서)
 
-// ✅ 문서당 리비전(히스토리) 최대 보관 개수
+/* ✅ 첫 화면에서 열 가이드 문서 제목 */
+const HOME_GUIDE_TITLE = "처음";
+
+/* ✅ 문서당 히스토리 최대 개수 */
 const MAX_REVISIONS_PER_PAGE = 10;
 
 const app = initializeApp(firebaseConfig);
@@ -55,10 +54,8 @@ const chipWrap = document.getElementById("category-chips");
 /* State */
 let currentUser = null;
 let canEdit = false;
-
-let pages = [];   // [{id,title,content,createdAt,updatedAt,updatedBy}]
-let images = {};  // { [id]: {id,name,url,storagePath,createdAt,uploadedBy} }
-
+let pages = [];
+let images = {};
 let currentFilter = "all";
 let sideQuery = "";
 
@@ -68,8 +65,8 @@ let __REFS = [];
 /* =========================
    Helpers
 ========================= */
-// ✅ 중요: ' (작은따옴표)는 변환하지 않는다 -> '''/'' 패턴이 살아있어야 함
 function escapeHtml(s) {
+  // ✅ 작은따옴표(')는 미디어위키 강조문법 때문에 변환하지 않음
   return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -136,6 +133,8 @@ async function ensureSeededOnce() {
       updatedAt: Date.now(),
       updatedBy: currentUser?.email || "unknown"
     });
+
+    // seed도 최초 리비전으로 기록
     await addRevision(id, {
       title: p.title,
       content: p.content || "",
@@ -157,6 +156,10 @@ function startListeners() {
       buildChips();
       buildList();
       route();
+    },
+    (err) => {
+      console.error(err);
+      viewEl.innerHTML = `<p>데이터를 불러오지 못했어. (Rules/네트워크 확인)</p>`;
     }
   );
 
@@ -167,7 +170,8 @@ function startListeners() {
       snap.docs.forEach(d => next[d.id] = { id: d.id, ...d.data() });
       images = next;
       route();
-    }
+    },
+    (err) => console.error(err)
   );
 }
 
@@ -237,10 +241,15 @@ function protectInlineCode(rawText) {
    Inline render
 ========================= */
 function renderInline(text) {
-  // remove HTML comments
-  let raw = String(text || "").replace(/<!--[\s\S]*?-->/g, "");
+  let raw = String(text || "");
 
-  // protect inline code first
+  // comments remove
+  raw = raw.replace(/<!--[\s\S]*?-->/g, "");
+
+  // 스마트 따옴표 방지(혹시 복붙으로 들어오면 강제 교정)
+  raw = raw.replace(/[\u2018\u2019]/g, "'");
+
+  // protect inline code
   const protectedResult = protectInlineCode(raw);
   raw = protectedResult.text;
   const codes = protectedResult.codes;
@@ -259,11 +268,11 @@ function renderInline(text) {
   t = t.replace(/'''(.+?)'''/g, "<strong>$1</strong>");
   t = t.replace(/''(.+?)''/g, "<em>$1</em>");
 
-  // Markdown emphasis (optional)
+  // Markdown emphasis (옵션)
   t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
-  // Markdown image ![cap](url or imgId)
+  // Markdown image
   t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
     const target = (url || "").trim();
     if (!target) return m;
@@ -272,7 +281,7 @@ function renderInline(text) {
     return m;
   });
 
-  // Wiki image [[Image:target|caption]]
+  // Wiki image
   t = t.replace(/\[\[(?:Image|File|파일|이미지)\:([^\]|]+)(?:\|([^\]]+))?\]\]/gi, (m, targetRaw, capRaw) => {
     const target = (targetRaw || "").trim();
     const caption = (capRaw || "").trim();
@@ -282,7 +291,7 @@ function renderInline(text) {
     return m;
   });
 
-  // Markdown link [text](url)
+  // Markdown link
   t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, url) => {
     const u = (url || "").trim();
     const l = (label || "").trim();
@@ -290,7 +299,7 @@ function renderInline(text) {
     return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l)}</a>`;
   });
 
-  // Wiki link [[...]]
+  // Wiki link
   t = t.replace(/\[\[([^\]]+)\]\]/g, (m, inner) => {
     const raw2 = (inner || "").trim();
 
@@ -323,7 +332,7 @@ function renderInline(text) {
     return `${lead}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
 
-  // restore inline code at the end (no further parsing)
+  // restore inline code at the end
   t = t.replace(/\{\{CODE:(\d+)\}\}/g, (m, idxStr) => {
     const idx = Number(idxStr);
     const codeRaw = codes[idx] ?? "";
@@ -350,7 +359,6 @@ function consumeMwList(lines, startIndex) {
       openLiDepth = 0;
     }
   }
-
   function closeListsTo(commonDepth) {
     while (stack.length > commonDepth) {
       if (openLiDepth === stack.length) {
@@ -360,7 +368,6 @@ function consumeMwList(lines, startIndex) {
       out.push(`</${stack.pop()}>`);
     }
   }
-
   function openListsFrom(commonDepth, targetTypes) {
     for (let d = commonDepth; d < targetTypes.length; d++) {
       out.push(`<${targetTypes[d]}>`);
@@ -407,8 +414,11 @@ function consumeMwList(lines, startIndex) {
 function renderWiki(body) {
   let text = String(body || "");
 
-  // remove HTML comments
+  // comments remove
   text = text.replace(/<!--[\s\S]*?-->/g, "");
+
+  // 스마트 따옴표 교정(혹시 전체 본문에 섞인 경우)
+  text = text.replace(/[\u2018\u2019]/g, "'");
 
   // refs
   __REFS = [];
@@ -426,7 +436,7 @@ function renderWiki(body) {
 
     if (!line.trim()) { i++; continue; }
 
-    // fenced code: ``` or ~~~ (allow ```lang too)
+    // fenced code: ``` or ~~~ (```lang도 허용)
     const fenceStart = line.trim().match(/^(```|~~~)/);
     if (fenceStart) {
       const fence = fenceStart[1];
@@ -472,7 +482,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // lists
+    // lists (* / #)
     if (/^[*#]+\s+/.test(line)) {
       const { html, nextIndex } = consumeMwList(lines, i);
       out.push(html);
@@ -480,7 +490,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // blockquote
+    // quote >
     if (line.startsWith(">")) {
       const buf = [];
       while (i < lines.length && lines[i].startsWith(">")) {
@@ -491,7 +501,7 @@ function renderWiki(body) {
       continue;
     }
 
-    // paragraph (merge until blank)
+    // paragraph
     const buf = [];
     while (i < lines.length && lines[i].trim()) {
       buf.push(lines[i]);
@@ -504,7 +514,40 @@ function renderWiki(body) {
 }
 
 /* =========================
-   UI: category chips
+   History: keep only latest 10
+========================= */
+async function pruneRevisions(pageId) {
+  try {
+    const snap = await getDocs(query(revisionsCol(pageId), orderBy("savedAt", "desc")));
+    const docs = snap.docs;
+    if (docs.length <= MAX_REVISIONS_PER_PAGE) return;
+
+    const toDelete = docs.slice(MAX_REVISIONS_PER_PAGE);
+    for (const d of toDelete) {
+      await deleteDoc(d.ref);
+    }
+  } catch (e) {
+    console.warn("pruneRevisions failed:", e);
+  }
+}
+
+async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
+  if (!canEdit) return;
+
+  await addDoc(revisionsCol(pageId), {
+    title,
+    content,
+    savedBy: savedBy || "unknown",
+    savedAt: savedAt || Date.now(),
+    note: note || ""
+  });
+
+  // ✅ 최신 10개만 유지
+  await pruneRevisions(pageId);
+}
+
+/* =========================
+   UI: chips + list
 ========================= */
 function buildChips() {
   if (!chipWrap) return;
@@ -535,9 +578,6 @@ function buildChips() {
   });
 }
 
-/* =========================
-   List build
-========================= */
 function buildList() {
   const qText = sideQuery.trim().toLowerCase();
   let list = [...pages];
@@ -564,52 +604,10 @@ function buildList() {
 }
 
 /* =========================
-   Revisions
-========================= */
-async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
-  if (!canEdit) return;
-
-  await addDoc(revisionsCol(pageId), {
-    title,
-    content,
-    savedBy: savedBy || "unknown",
-    savedAt: savedAt || Date.now(),
-    note: note || ""
-  });
-
-  // ✅ 저장 후 오래된 리비전 정리(최신 10개만 유지)
-  await pruneRevisions(pageId);
-}
-
-// ✅ 최신 N개만 남기고 나머지 리비전 삭제
-async function pruneRevisions(pageId) {
-  try {
-    // 최신순으로 전부 가져온 뒤 10개 초과분 삭제
-    const snap = await getDocs(
-      query(revisionsCol(pageId), orderBy("savedAt", "desc"))
-    );
-
-    const docs = snap.docs;
-    if (docs.length <= MAX_REVISIONS_PER_PAGE) return;
-
-    const toDelete = docs.slice(MAX_REVISIONS_PER_PAGE);
-
-    // 순차 삭제(안정적)
-    for (const d of toDelete) {
-      await deleteDoc(d.ref);
-    }
-  } catch (e) {
-    console.warn("pruneRevisions failed:", e);
-  }
-}
-
-/* =========================
-   Routes / Views
+   Routing
 ========================= */
 function pickGuidePage() {
-  const exact = pages.find(p => (p.title || "").trim() === HOME_GUIDE_TITLE);
-  if (exact) return exact;
-  return null;
+  return pages.find(p => (p.title || "").trim() === HOME_GUIDE_TITLE) || null;
 }
 
 function route() {
@@ -617,6 +615,7 @@ function route() {
   const [path, qs] = hash.replace("#", "").split("?");
 
   if (path === "/") return renderGuideHome();
+  if (path === "/recent") return renderRecent();
   if (path === "/search") {
     const params = new URLSearchParams(qs || "");
     return renderSearch((params.get("q") || "").trim());
@@ -625,6 +624,11 @@ function route() {
   if (path.startsWith("/page/")) return renderPage(path.replace("/page/", ""));
   if (path.startsWith("/edit/")) return renderEditor({ mode: "edit", slug: path.replace("/edit/", "") });
   if (path.startsWith("/history/")) return renderHistory(path.replace("/history/", ""));
+  if (path.startsWith("/revision/")) {
+    const rest = path.replace("/revision/", "");
+    const [pageId, revId] = rest.split("/");
+    return renderRevision(pageId, revId);
+  }
 
   location.hash = "#/";
 }
@@ -632,9 +636,14 @@ function route() {
 function renderGuideHome() {
   const guide = pickGuidePage();
   if (guide) return renderPage(guide.id);
+  return renderRecent();
+}
 
-  // fallback: recent list
-  const recent = [...pages].slice(0, 10);
+function renderRecent() {
+  const recent = [...pages]
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, 10);
+
   viewEl.innerHTML = `
     <h2 class="page-title">최근</h2>
     <ul>
@@ -711,8 +720,12 @@ function renderSearch(q) {
   });
 }
 
+/* =========================
+   ✅ History + Revision detail + Revert
+========================= */
 async function renderHistory(pageId) {
   viewEl.innerHTML = `<h2 class="page-title">역사</h2><p class="muted">불러오는 중...</p>`;
+
   try {
     const snap = await getDocs(
       query(revisionsCol(pageId), orderBy("savedAt", "desc"), limit(MAX_REVISIONS_PER_PAGE))
@@ -721,15 +734,21 @@ async function renderHistory(pageId) {
 
     viewEl.innerHTML = `
       <h2 class="page-title">역사</h2>
+      <p class="muted">최신 ${MAX_REVISIONS_PER_PAGE}개</p>
+
       ${rows.length ? `
         <ul>
           ${rows.map(r => `
             <li>
-              ${escapeHtml(formatDate(r.savedAt))} <span class="muted">· ${escapeHtml(r.savedBy || "")}</span>
+              <a href="#/revision/${escapeHtml(pageId)}/${escapeHtml(r.id)}">
+                ${escapeHtml(formatDate(r.savedAt))}
+              </a>
+              <span class="muted"> · ${escapeHtml(r.savedBy || "")}${r.note ? ` · ${escapeHtml(r.note)}` : ""}</span>
             </li>
           `).join("")}
         </ul>
       ` : `<p>아직 기록이 없어.</p>`}
+
       <div class="tools-row">
         <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
       </div>
@@ -737,6 +756,72 @@ async function renderHistory(pageId) {
   } catch (e) {
     console.error(e);
     viewEl.innerHTML = `<h2 class="page-title">역사</h2><p>불러오지 못했어.</p>`;
+  }
+}
+
+async function renderRevision(pageId, revId) {
+  viewEl.innerHTML = `<h2 class="page-title">리비전</h2><p class="muted">불러오는 중...</p>`;
+
+  try {
+    const snap = await getDoc(doc(db, "wikis", WIKI_ID, "pages", pageId, "revisions", revId));
+    if (!snap.exists()) {
+      viewEl.innerHTML = `<h2 class="page-title">리비전 없음</h2>`;
+      return;
+    }
+
+    const r = snap.data();
+
+    viewEl.innerHTML = `
+      <h2 class="page-title">리비전</h2>
+      <div class="meta-row">
+        <span>${escapeHtml(formatDate(r.savedAt))}</span>
+        ${r.savedBy ? `<span>·</span><span>${escapeHtml(r.savedBy)}</span>` : ""}
+        ${r.note ? `<span>·</span><span>${escapeHtml(r.note)}</span>` : ""}
+      </div>
+
+      <div class="doc">${renderWiki(String(r.content || ""))}</div>
+
+      <div class="tools-row">
+        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">역사로</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
+        ${canEdit ? `<button class="tool-link" type="button" id="revert-btn">이 버전으로 되돌리기</button>` : ""}
+      </div>
+    `;
+
+    if (canEdit) {
+      document.getElementById("revert-btn").addEventListener("click", async () => {
+        const ok = confirm("현재 문서를 이 리비전으로 되돌릴까? (되돌리기도 히스토리에 기록됨)");
+        if (!ok) return;
+
+        // 현재 문서의 createdAt 유지
+        const current = pages.find(p => p.id === pageId);
+        const createdAt = current?.createdAt || Date.now();
+        const title = current?.title || r.title || "(untitled)";
+        const now = Date.now();
+
+        await setDoc(pageDoc(pageId), {
+          title,
+          content: String(r.content || ""),
+          createdAt,
+          updatedAt: now,
+          updatedBy: currentUser?.email || "unknown"
+        });
+
+        // 되돌리기 자체도 새 리비전으로 기록
+        await addRevision(pageId, {
+          title,
+          content: String(r.content || ""),
+          savedBy: currentUser?.email || "unknown",
+          savedAt: now,
+          note: `revert:${revId}`
+        });
+
+        location.hash = `#/page/${pageId}`;
+      });
+    }
+  } catch (e) {
+    console.error(e);
+    viewEl.innerHTML = `<h2 class="page-title">리비전 오류</h2><p>불러오지 못했어.</p>`;
   }
 }
 
@@ -778,6 +863,7 @@ async function uploadImage(file) {
 
 async function savePage({ mode, oldId, title, content }) {
   if (!canEdit) throw new Error("not logged in");
+
   const now = Date.now();
   const newId = toDocId(title);
 
@@ -815,7 +901,7 @@ function renderEditor({ mode, slug }) {
 
   const editing = mode === "edit" ? pages.find(p => p.id === slug) : null;
   const titleValue = editing ? editing.title : "";
-  const contentValue = editing ? editing.content : `---\ncategory: ${CATEGORY_OPTIONS[0]}\n---\n\n== 테스트 ==\n'''굵게''' / ''기울임''\n\n\`\`\`\n코드블록 테스트\n'''여기서는 굵게 안 됨'''\n\`\`\`\n`;
+  const contentValue = editing ? editing.content : `---\ncategory: ${CATEGORY_OPTIONS[0]}\n---\n\n== 제목 ==\n내용...\n`;
 
   viewEl.innerHTML = `
     <h2 class="page-title">${mode === "edit" ? "편집" : "새 문서"}</h2>
@@ -880,13 +966,13 @@ function renderEditor({ mode, slug }) {
 }
 
 /* =========================
-   UI bind + auth boot
+   Bind UI + Auth boot
 ========================= */
 function bindUI() {
   document.querySelectorAll(".nav-btn[data-nav]").forEach(btn => {
     btn.addEventListener("click", () => {
       const nav = btn.getAttribute("data-nav");
-      if (nav === "recent") location.hash = "#/";
+      if (nav === "recent") location.hash = "#/recent";
       if (nav === "search") location.hash = "#/search";
       if (nav === "new") {
         if (!canEdit) return alert("새 문서는 로그인 후에 만들 수 있어.");
@@ -928,6 +1014,7 @@ async function bootAuth() {
       authBtn.textContent = "로그인";
       authStatus.textContent = "읽기 모드";
     }
+
     route();
   });
 }
