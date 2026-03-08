@@ -172,9 +172,10 @@ pre.code-block {
 }
 
 .chip:not(.is-active):hover {
-  background: var(--link);
-  border-color: var(--link);
-  color: #fff;
+  border-color: #d6d6d6;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 4px;
 }
 
 .chip.is-active {
