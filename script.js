@@ -1,7 +1,7 @@
 /* =========================================================
   Review Wiki
   - 공개 읽기 + 로그인 편집(여러 사람 가능)
-  - 역사(리비전) 보기 + 리비전 상세 + 되돌리기(revert)
+  - 히스토리(리비전) 보기 + 리비전 상세 + 되돌리기(revert)
   - ✅ 히스토리는 문서당 10개만 유지
 ========================================================= */
 
@@ -569,10 +569,39 @@ function renderWiki(body) {
       buf.push(lines[i]);
       i++;
     }
-    out.push(`<p>${renderInline(buf.join(" "))}</p>`);
+    out.push(`<p>${renderParagraph(buf)}</p>`);
   }
 
   return out.join("\n");
+}
+
+function renderParagraph(linesBuf) {
+  const pieces = [];
+
+  for (let idx = 0; idx < linesBuf.length; idx++) {
+    let line = String(linesBuf[idx] ?? "");
+
+    // ✅ (A) 줄 끝에 \\ 가 있으면 강제 줄바꿈
+    let hardBreak = /\\\\\s*$/.test(line);
+    if (hardBreak) line = line.replace(/\\\\\s*$/, "");
+
+    // ✅ (B) 줄 끝 공백 2칸(또는 그 이상)도 강제 줄바꿈
+    // (A가 있으면 이미 hardBreak라서 그대로 유지)
+    if (!hardBreak && /\s{2,}$/.test(line)) {
+      hardBreak = true;
+      line = line.replace(/\s{2,}$/, "");
+    }
+
+    // 렌더
+    pieces.push(renderInline(line));
+
+    // 다음 줄 연결 방식
+    if (idx < linesBuf.length - 1) {
+      pieces.push(hardBreak ? "<br>" : " ");
+    }
+  }
+
+  return pieces.join("");
 }
 
 /* =========================
@@ -738,7 +767,7 @@ function renderPage(slug) {
 
     <div class="tools-row">
       <button class="tool-link" type="button" id="edit-btn">편집</button>
-      <button class="tool-link" type="button" id="history-btn">역사</button>
+      <button class="tool-link" type="button" id="history-btn">히스토리</button>
       <button class="tool-link" type="button" onclick="location.hash='#/'">처음</button>
     </div>
   `;
@@ -786,7 +815,7 @@ function renderSearch(q) {
    ✅ History + Revision detail + Revert
 ========================= */
 async function renderHistory(pageId) {
-  viewEl.innerHTML = `<h2 class="page-title">역사</h2><p class="muted">불러오는 중...</p>`;
+  viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p class="muted">불러오는 중...</p>`;
 
   try {
     const snap = await getDocs(
@@ -795,7 +824,7 @@ async function renderHistory(pageId) {
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     viewEl.innerHTML = `
-      <h2 class="page-title">역사</h2>
+      <h2 class="page-title">히스토리</h2>
       <p class="muted">최신 ${MAX_REVISIONS_PER_PAGE}개</p>
 
       ${rows.length ? `
@@ -817,7 +846,7 @@ async function renderHistory(pageId) {
     `;
   } catch (e) {
     console.error(e);
-    viewEl.innerHTML = `<h2 class="page-title">역사</h2><p>불러오지 못했어.</p>`;
+    viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p>불러오지 못했어.</p>`;
   }
 }
 
@@ -844,7 +873,7 @@ async function renderRevision(pageId, revId) {
       <div class="doc">${renderWiki(String(r.content || ""))}</div>
 
       <div class="tools-row">
-        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">역사로</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">히스토리로</button>
         <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
         ${canEdit ? `<button class="tool-link" type="button" id="revert-btn">이 버전으로 되돌리기</button>` : ""}
       </div>
