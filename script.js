@@ -539,10 +539,17 @@ function renderWiki(body) {
       buf.push(lines[i]);
       i++;
     }
-    out.push(`<p>${renderInline(buf.join(" "))}</p>`);
+    out.push(`<p>${renderParagraphWithLineBreaks(buf)}</p>`);
   }
 
   return out.join("\n");
+}
+
+function renderParagraphWithLineBreaks(linesBuf) {
+  // ✅ 엔터 1번은 <br>, 빈 줄은 renderWiki가 이미 문단을 나눔
+  return linesBuf
+    .map(line => renderInline(line))
+    .join("<br>");
 }
 
 /* =========================
