@@ -104,6 +104,7 @@ pre.code-block {
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
 }
 
 .auth-pill {
@@ -212,6 +213,7 @@ pre.code-block {
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 3px;
+  text-decoration-thickness: 2px;
 }
 
 .page-item .t {
@@ -245,6 +247,7 @@ a:hover {
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
 }
 
 .page-title {
@@ -286,6 +289,7 @@ a:hover {
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
 }
 
 hr {
