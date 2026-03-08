@@ -415,7 +415,8 @@ figcaption.wiki-caption {
 
 @media (max-width:960px) {
   .site-title {
-    font-size: 22px;
+    font-size: 24px;
+    line-height: 0.2rem;
   }
 
   .layout {
