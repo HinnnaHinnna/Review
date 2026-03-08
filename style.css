@@ -82,7 +82,12 @@ body {
   padding: 7px 10px;
   border-radius: 999px;
   font-size: 12px;
-  color: var(--muted)
+  color: var(--muted);
+  max-width: 42vw;
+  /* 화면 폭에 맞춰 적당히 제한 (원하면 숫자 조절) */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .layout {
@@ -426,5 +431,9 @@ figcaption.wiki-caption {
   .side {
     border-right: none;
     border-bottom: 1px solid var(--line)
+  }
+
+  .auth-pill {
+    max-width: 34vw;
   }
 }
