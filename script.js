@@ -585,14 +585,14 @@ async function deleteAllRevisions(pageId) {
 
 async function deletePageCompletely(pageId) {
   if (!canEdit) {
-    alert("삭제하려면 로그인해야 해.");
+    alert("삭제하려면 로그인해야 한답니다.");
     return;
   }
 
   const page = pages.find(p => p.id === pageId);
   const title = page?.title || pageId;
 
-  const ok = confirm(`정말로 삭제할까?\n\n- 문서: ${title}\n- 히스토리도 함께 삭제됨\n\n이 작업은 되돌리기 어렵다.`);
+  const ok = confirm(`정말로 삭제할까유?\n\n- 문서: ${title}\n- 히스토리도 함께 삭제되지요`);
   if (!ok) return;
 
   try {
@@ -713,7 +713,7 @@ function renderRecent() {
 function renderPage(pageId) {
   const page = pages.find(p => p.id === pageId);
   if (!page) {
-    viewEl.innerHTML = `<h2 class="page-title">없음</h2><p>문서를 찾지 못했어.</p>`;
+    viewEl.innerHTML = `<h2 class="page-title">없음</h2><p>문서를 찾지 못했답니다.</p>`;
     return;
   }
 
@@ -734,13 +734,13 @@ function renderPage(pageId) {
 
     <div class="tools-row">
       <button class="tool-link" type="button" id="edit-btn">편집</button>
-      <button class="tool-link" type="button" id="history-btn">역사</button>
+      <button class="tool-link" type="button" id="history-btn">히스토리</button>
       ${canEdit ? `<button class="tool-link" type="button" id="delete-btn">문서 삭제</button>` : ""}
     </div>
   `;
 
   document.getElementById("edit-btn").addEventListener("click", () => {
-    if (!canEdit) return alert("편집하려면 로그인해야 해.");
+    if (!canEdit) return alert("편집하려면 로그인해야 함다.");
     location.hash = `#/edit/${pageId}`;
   });
 
@@ -773,8 +773,8 @@ function renderSearch(q) {
     ${queryText
       ? (results.length
         ? `<ul>${results.map(p => `<li><a href="#/page/${escapeHtml(p.id)}">${escapeHtml(p.title)}</a></li>`).join("")}</ul>`
-        : `<p>결과가 없어.</p>`)
-      : `<p>검색어를 입력해줘.</p>`
+        : `<p>결과가 없슴다.</p>`)
+      : `<p>검색어를 입력해주소서.</p>`
     }
   `;
 
@@ -789,7 +789,7 @@ function renderSearch(q) {
    History + Revision detail + Revert
 ========================= */
 async function renderHistory(pageId) {
-  viewEl.innerHTML = `<h2 class="page-title">역사</h2><p class="muted">불러오는 중...</p>`;
+  viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p class="muted">불러오는 중이지요...</p>`;
 
   try {
     const snap = await getDocs(
@@ -798,7 +798,7 @@ async function renderHistory(pageId) {
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     viewEl.innerHTML = `
-      <h2 class="page-title">역사</h2>
+      <h2 class="page-title">히스토리</h2>
       <p class="muted">최신 ${MAX_REVISIONS_PER_PAGE}개</p>
 
       ${rows.length ? `
@@ -812,7 +812,7 @@ async function renderHistory(pageId) {
             </li>
           `).join("")}
         </ul>
-      ` : `<p>아직 기록이 없어.</p>`}
+      ` : `<p>아직 기록이 없지요.</p>`}
 
       <div class="tools-row">
         <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
@@ -820,12 +820,12 @@ async function renderHistory(pageId) {
     `;
   } catch (e) {
     console.error(e);
-    viewEl.innerHTML = `<h2 class="page-title">역사</h2><p>불러오지 못했어.</p>`;
+    viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p>불러오지 못했어.</p>`;
   }
 }
 
 async function renderRevision(pageId, revId) {
-  viewEl.innerHTML = `<h2 class="page-title">리비전</h2><p class="muted">불러오는 중...</p>`;
+  viewEl.innerHTML = `<h2 class="page-title">리비전</h2><p class="muted">불러오는 중이지요...</p>`;
 
   try {
     const snap = await getDoc(doc(db, "wikis", WIKI_ID, "pages", pageId, "revisions", revId));
@@ -847,7 +847,7 @@ async function renderRevision(pageId, revId) {
       <div class="doc">${renderWiki(String(r.content || ""))}</div>
 
       <div class="tools-row">
-        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">역사로</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">히스토리로</button>
         <button class="tool-link" type="button" onclick="location.hash='#/page/${escapeHtml(pageId)}'">문서로</button>
         ${canEdit ? `<button class="tool-link" type="button" id="revert-btn">이 버전으로 되돌리기</button>` : ""}
       </div>
@@ -855,7 +855,7 @@ async function renderRevision(pageId, revId) {
 
     if (canEdit) {
       document.getElementById("revert-btn").addEventListener("click", async () => {
-        const ok = confirm("현재 문서를 이 리비전으로 되돌릴까? (되돌리기도 히스토리에 기록됨)");
+        const ok = confirm("현재 문서를 이 리비전으로 되돌릴까유? (되돌리기도 히스토리에 기록됨다)");
         if (!ok) return;
 
         const current = pages.find(p => p.id === pageId);
@@ -884,7 +884,7 @@ async function renderRevision(pageId, revId) {
     }
   } catch (e) {
     console.error(e);
-    viewEl.innerHTML = `<h2 class="page-title">리비전 오류</h2><p>불러오지 못했어.</p>`;
+    viewEl.innerHTML = `<h2 class="page-title">리비전 오류</h2><p>불러오지 못했슴다.</p>`;
   }
 }
 
@@ -988,7 +988,7 @@ function renderEditor({ mode, slug }) {
   document.getElementById("save-btn").addEventListener("click", async () => {
     const newTitle = titleInput.value.trim();
     const newContent = contentInput.value;
-    if (!newTitle) return alert("제목을 입력해줘.");
+    if (!newTitle) return alert("제목을 입력해 주소서.");
 
     try {
       const newId = await savePage({
@@ -1016,7 +1016,7 @@ function renderEditor({ mode, slug }) {
     const file = e.target.files && e.target.files[0];
     uploadInput.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) return alert("이미지 파일만 가능해.");
+    if (!file.type.startsWith("image/")) return alert("이미지 파일만 가능하지.");
 
     try {
       const uploaded = await uploadImage(file);
@@ -1038,7 +1038,7 @@ function bindUI() {
       if (nav === "recent") location.hash = "#/recent";
       if (nav === "search") location.hash = "#/search";
       if (nav === "new") {
-        if (!canEdit) return alert("새 문서는 로그인 후에 만들 수 있어.");
+        if (!canEdit) return alert("새 문서는 로그인 후에 만들 수 있소.");
         location.hash = "#/new";
       }
     });
