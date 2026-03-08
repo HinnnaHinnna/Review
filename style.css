@@ -165,10 +165,9 @@ pre.code-block {
 
 /* ✅ 카테고리 칩 hover 시 --link 색으로 */
 .chip:hover {
-  background: var(--links);
-  border-color: var(--links);
-  color: #fff;
-  /* 배경이 진해지니까 글자는 흰색 추천 */
+  background: var(--chip-active);
+  border-color: #d6d6ff
+    /* 배경이 진해지니까 글자는 흰색 추천 */
 }
 
 .chip:not(.is-active):hover {
@@ -178,8 +177,9 @@ pre.code-block {
 }
 
 .chip.is-active {
-  background: var(--chip-active);
-  border-color: #d6d6ff
+  background: var(--links);
+  border-color: var(--links);
+  color: #fff;
 }
 
 .side-search input {
