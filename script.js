@@ -1031,29 +1031,32 @@ async function renderRevision(pageId, revId) {
 /* =========================
    Save page (new / edit / rename => redirect)
 ========================= */
-async function savePage({ mode, oldId, title, content }) {
+aasync function savePage({ mode, oldId, title, content }) {
   if (!canEdit) throw new Error("not logged in");
 
   const now = Date.now();
   const isEdit = mode === "edit" && !!oldId;
 
   const newId = toDocId(title);
+
   const prev = isEdit ? pages.find(p => p.id === oldId) : null;
-  const createdAt = prev?.createdAt || now;
+  const prevCreatedAt = prev?.createdAt || now;
   const prevAliases = Array.isArray(prev?.aliases) ? prev.aliases : [];
 
-  // ✅ prevent overwriting an existing doc when renaming / creating
-  const existsNew = pages.some(p => p.id === newId);
-  if ((!isEdit && existsNew) || (isEdit && oldId !== newId && existsNew)) {
+  const dest = pages.find(p => p.id === newId) || null; // ✅ 충돌 대상 문서(있으면 덮어씀)
+  const existsNew = !!dest;
+
+  // ✅ 새 문서(new) 만들 때는 여전히 안전하게 막음 (원하면 이것도 덮어쓰게 바꿀 수 있음)
+  if (!isEdit && existsNew) {
     throw new Error("이미 같은 제목(슬러그)의 문서가 존재합니다.");
   }
 
-  // (1) edit & same slug => update only
+  // ✅ 1) 편집인데 슬러그가 그대로면: 기존 문서 업데이트
   if (isEdit && newId === oldId) {
     await setDoc(pageDoc(oldId), {
       title,
       content,
-      createdAt,
+      createdAt: prevCreatedAt,
       updatedAt: now,
       updatedBy: currentUser?.email || "unknown",
       aliases: prevAliases
@@ -1070,14 +1073,80 @@ async function savePage({ mode, oldId, title, content }) {
     return oldId;
   }
 
-  // (2) new doc OR rename (move)
+  // ✅ 2) 편집 중 제목 변경(= 이동)인데, 목적지(newId)가 이미 존재하면: 덮어쓰기(OVERWRITE)
+  if (isEdit && oldId && oldId !== newId && existsNew) {
+    const destAliases = Array.isArray(dest.aliases) ? dest.aliases : [];
+
+    // (2-0) 덮어쓰기 전에 목적지 문서의 기존 내용을 "백업 리비전"으로 남김
+    //       (히스토리 10개 제한이 있어서 오래된 건 밀릴 수 있지만,
+    //        최소한 직전 상태는 히스토리에 남게 됨)
+    await addRevision(newId, {
+      title: dest.title || title,
+      content: String(dest.content || ""),
+      savedBy: currentUser?.email || "unknown",
+      savedAt: now,
+      note: `backup-before-overwrite-from:${oldId}`
+    });
+
+    // createdAt은 둘 중 더 오래된(더 작은) 값을 유지
+    const destCreatedAt = typeof dest.createdAt === "number" ? dest.createdAt : now;
+    const createdAt = Math.min(destCreatedAt, prevCreatedAt);
+
+    // aliases는 목적지/원본/oldId 모두 합쳐서 유지
+    const mergedAliases = Array.from(new Set([...destAliases, ...prevAliases, oldId]));
+
+    // (2-1) 목적지 문서(newId)를 "지금 편집한 내용"으로 덮어쓰기
+    await setDoc(pageDoc(newId), {
+      title,
+      content,
+      createdAt,
+      updatedAt: now,
+      updatedBy: currentUser?.email || "unknown",
+      aliases: mergedAliases
+    });
+
+    await addRevision(newId, {
+      title,
+      content,
+      savedBy: currentUser?.email || "unknown",
+      savedAt: now,
+      note: `overwrite-from:${oldId}`
+    });
+
+    // (2-2) 원래 문서(oldId)는 리다이렉트로 바꿈
+    const oldTitle = prev?.title || oldId;
+    const redirectContent =
+      `---
+redirect: true
+---
+#REDIRECT [[${title}]]`;
+
+    await setDoc(pageDoc(oldId), {
+      title: oldTitle,
+      content: redirectContent,
+      createdAt: prevCreatedAt,
+      updatedAt: now,
+      updatedBy: currentUser?.email || "unknown"
+    });
+
+    await addRevision(oldId, {
+      title: oldTitle,
+      content: redirectContent,
+      savedBy: currentUser?.email || "unknown",
+      savedAt: now,
+      note: `redirect-to:${newId}`
+    });
+
+    return newId; // ✅ URL도 새 슬러그로 이동
+  }
+
+  // ✅ 3) (충돌 없음) 새 문서 OR 편집 중 정상 이동(rename)
   const aliases = isEdit ? Array.from(new Set([...prevAliases, oldId])) : [];
 
-  // create newId doc
   await setDoc(pageDoc(newId), {
     title,
     content,
-    createdAt,
+    createdAt: prevCreatedAt,
     updatedAt: now,
     updatedBy: currentUser?.email || "unknown",
     aliases
@@ -1091,7 +1160,7 @@ async function savePage({ mode, oldId, title, content }) {
     note: isEdit ? `rename-from:${oldId}` : "new"
   });
 
-  // rename: oldId becomes redirect doc
+  // 이동이면 oldId를 리다이렉트로
   if (isEdit && oldId && oldId !== newId) {
     const oldTitle = prev?.title || oldId;
     const redirectContent =
@@ -1103,7 +1172,7 @@ redirect: true
     await setDoc(pageDoc(oldId), {
       title: oldTitle,
       content: redirectContent,
-      createdAt,
+      createdAt: prevCreatedAt,
       updatedAt: now,
       updatedBy: currentUser?.email || "unknown"
     });
