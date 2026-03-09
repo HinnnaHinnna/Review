@@ -1157,9 +1157,7 @@ function renderEditor({ mode, slug }) {
         <button class="btn" type="button" id="cancel-btn">취소</button>
       </div>
 
-      <p class="muted">
-        팁: 엔터 1번은 줄바꿈, 빈 줄은 새 문단.
-      </p>
+
     </div>
   `;
 
