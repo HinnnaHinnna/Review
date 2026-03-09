@@ -939,7 +939,9 @@ function renderPage(pageId) {
       ${metaBits.length ? `<span>·</span><span>${escapeHtml(metaBits.join(" · "))}</span>` : ""}
     </div>
 
-    <div class="doc">${renderWiki(body)}</div>
+    <hr />
+
+    <div class="doc">${renderWiki(String(r.content || ""))}</div>
 
     <div class="tools-row">
       <button class="tool-link" type="button" id="edit-btn">편집</button>
