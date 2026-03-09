@@ -490,16 +490,11 @@ figcaption.wiki-caption {
    {{숨김 시작|제목=...}} ... {{숨김 끝}}
 ========================= */
 details.mw-hide {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin: 0 0 14px 0;
-  background: #fafafa;
+  border: 0px solid var(--line);
 }
 
 details.mw-hide>summary {
   cursor: pointer;
-  font-weight: 700;
   list-style: none;
 }
 
