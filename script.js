@@ -1031,7 +1031,7 @@ async function renderRevision(pageId, revId) {
 /* =========================
    Save page (new / edit / rename => redirect)
 ========================= */
-aasync function savePage({ mode, oldId, title, content }) {
+async function savePage({ mode, oldId, title, content }) {
   if (!canEdit) throw new Error("not logged in");
 
   const now = Date.now();
