@@ -829,7 +829,7 @@ if (canEdit) {
     deletePageCompletely(pageId);
   });
 }
-}
+
 
 function renderSearch(q) {
   const queryText = (q || "").trim();
