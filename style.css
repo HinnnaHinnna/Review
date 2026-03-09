@@ -489,25 +489,59 @@ figcaption.wiki-caption {
    Hide/Collapse (MediaWiki-ish)
    {{숨김 시작|제목=...}} ... {{숨김 끝}}
 ========================= */
+/* =========================
+   Hide/Collapse (no box, link-like)
+========================= */
+
+/* ✅ 박스/배경/패딩 전부 제거 */
 details.mw-hide {
-  border: 0px solid var(--line);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
+/* ✅ summary를 링크처럼: 색만(--link), hover시 밑줄(--link) */
 details.mw-hide>summary {
   cursor: pointer;
+  color: var(--link);
+  font-weight: inherit;
+  /* 굵기 강제하지 않음 */
   list-style: none;
+  text-decoration: none;
+  padding: 0;
+  margin: 0;
 }
 
+/* 마커 제거(브라우저 기본 삼각형) */
 details.mw-hide>summary::-webkit-details-marker {
   display: none;
 }
 
-details.mw-hide[open]>summary {
-  margin-bottom: 8px;
+details.mw-hide>summary::marker {
+  content: "";
 }
 
+/* hover 밑줄 + 밑줄 색 */
+details.mw-hide>summary:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-underline-offset: 3px;
+}
+
+/* 본문도 스타일 최소화 */
 details.mw-hide .mw-hide-body {
-  padding-top: 2px;
+  margin: 0;
+  padding: 0;
+}
+
+/* ✅ 접힘/펼침 표시: 기본은 [+], 열리면 [-] */
+details.mw-hide>summary::before {
+  content: "[+] ";
+}
+
+details.mw-hide[open]>summary::before {
+  content: "[-] ";
 }
 
 @media (max-width:960px) {
