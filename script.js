@@ -506,110 +506,181 @@ function renderParagraphWithLineBreaks(linesBuf) {
    Block render (with code protection)
 ========================= */
 function renderWiki(body) {
-  const originalLines = normalizeSmartQuotes(String(body || "")).replaceAll("\r\n", "\n").split("\n");
+  const originalLines = normalizeSmartQuotes(String(body || ""))
+    .replaceAll("\r\n", "\n")
+    .split("\n");
 
-  // 1) protect fenced code blocks first
+  // 1) code block 보호 (```/~~~)
   const extracted = extractFencedCodeBlocks(originalLines);
   let text = extracted.lines.join("\n");
   const codeBlocks = extracted.blocks;
 
-  // 2) protect inline code across whole text
+  // 2) 인라인 코드(`...`)도 먼저 보호 (주석/각주/숨김 템플릿이 코드 안에서 발동하지 않게)
   const inlineProtected = protectInlineCodeWholeText(text);
   text = inlineProtected.text;
   const inlineCodes = inlineProtected.codes;
 
-  // 3) remove html comments (outside code blocks & outside inline code)
+  // 3) 주석 제거(코드 밖에서만)
   text = text.replace(/<!--[\s\S]*?-->/g, "");
 
-  // 4) refs (outside code blocks & outside inline code)
+  // 4) 각주(ref) 추출(코드 밖에서만)
   __REFS = [];
   text = text.replace(/<ref>([\s\S]*?)<\/ref>/gi, (m, inner) => {
     __REFS.push((inner || "").trim());
     return `{{REF:${__REFS.length}}}`;
   });
 
-  // 5) restore inline code tokens back to `...` before parsing lines
+  // ✅ 5) 숨김(접기) 템플릿을 토큰으로 변환
+  // 제목 필수: {{숨김 시작|제목=...}} 만 변환됨 (제목 없으면 그대로 텍스트로 남음)
+  text = text.replace(
+    /\{\{\s*숨김\s*시작\s*\|\s*제목\s*=\s*([^}]+?)\s*\}\}/g,
+    (m, titleRaw) => `\n{{HIDE_START:${encodeURIComponent(String(titleRaw).trim())}}}\n`
+  );
+  text = text.replace(/\{\{\s*숨김\s*끝\s*\}\}/g, "\n{{HIDE_END}}\n");
+
+  // 6) 인라인 코드 토큰 복원(`...`)
   text = restoreInlineCodeWholeText(text, inlineCodes);
 
   const lines = text.split("\n");
-  const out = [];
-  let i = 0;
 
-  while (i < lines.length) {
-    const line = lines[i];
+  // ✅ lines 배열을 재귀적으로 렌더링(숨김 블록 내부도 같은 규칙 적용)
+  function renderFromLines(localLines) {
+    const out = [];
+    let i = 0;
 
-    if (!line.trim()) { i++; continue; }
+    while (i < localLines.length) {
+      const line = localLines[i];
 
-    // restore code blocks (no parsing inside)
-    const cb = line.trim().match(/^\{\{CODEBLOCK:(\d+)\}\}$/);
-    if (cb) {
-      const idx = Number(cb[1]);
-      const codeText = codeBlocks[idx] ?? "";
-      out.push(`<pre class="code-block"><code>${escapeHtml(codeText)}</code></pre>`);
-      i++;
-      continue;
-    }
-
-    // <references/>
-    if (/^<references\s*\/\s*>$/i.test(line.trim())) {
-      if (!__REFS.length) {
-        out.push(`<p class="muted">각주가 아직 없습니다.</p>`);
-      } else {
-        const items = __REFS.map((refText, idx) => {
-          const n = idx + 1;
-          return `<li id="ref-${n}">${renderInline(refText)} <a href="#refback-${n}">↩︎</a></li>`;
-        }).join("");
-        out.push(`<ol class="reflist">${items}</ol>`);
+      if (!line.trim()) {
+        i++;
+        continue;
       }
-      i++;
-      continue;
-    }
 
-    // headings == ==
-    const mwHeading = line.match(/^(={2,6})\s*(.+?)\s*\1\s*$/);
-    if (mwHeading) {
-      const level = Math.min(6, Math.max(2, mwHeading[1].length));
-      out.push(`<h${level}>${renderInline(mwHeading[2])}</h${level}>`);
-      i++;
-      continue;
-    }
+      // restore code blocks (no parsing inside)
+      const cb = line.trim().match(/^\{\{CODEBLOCK:(\d+)\}\}$/);
+      if (cb) {
+        const idx = Number(cb[1]);
+        const codeText = codeBlocks[idx] ?? "";
+        out.push(`<pre class="code-block"><code>${escapeHtml(codeText)}</code></pre>`);
+        i++;
+        continue;
+      }
 
-    // HR
-    if (line.trim() === "---") {
-      out.push("<hr />");
-      i++;
-      continue;
-    }
+      // ✅ hide start / end
+      const hs = line.trim().match(/^\{\{HIDE_START:(.+)\}\}$/);
+      if (hs) {
+        const title = decodeURIComponent(hs[1] || "");
+        i++;
 
-    // lists
-    if (/^[*#]+\s+/.test(line)) {
-      const { html, nextIndex } = consumeMwList(lines, i);
-      out.push(html);
-      i = nextIndex;
-      continue;
-    }
+        // depth로 중첩도 안전하게 처리
+        const inner = [];
+        let depth = 1;
 
-    // quote >
-    if (line.startsWith(">")) {
+        while (i < localLines.length) {
+          const l = localLines[i];
+          const hs2 = l.trim().match(/^\{\{HIDE_START:(.+)\}\}$/);
+          const he2 = l.trim() === "{{HIDE_END}}";
+
+          if (hs2) {
+            depth++;
+            inner.push(l);
+            i++;
+            continue;
+          }
+          if (he2) {
+            depth--;
+            if (depth === 0) {
+              i++; // end 토큰 소비
+              break;
+            }
+            inner.push(l);
+            i++;
+            continue;
+          }
+
+          inner.push(l);
+          i++;
+        }
+
+        const innerHtml = renderFromLines(inner);
+        out.push(`
+          <details class="mw-hide">
+            <summary>${escapeHtml(title)}</summary>
+            <div class="mw-hide-body">${innerHtml}</div>
+          </details>
+        `);
+        continue;
+      }
+
+      if (line.trim() === "{{HIDE_END}}") {
+        // 짝이 안 맞는 end는 무시(문서 깨짐 방지)
+        i++;
+        continue;
+      }
+
+      // <references/>
+      if (/^<references\s*\/\s*>$/i.test(line.trim())) {
+        if (!__REFS.length) {
+          out.push(`<p class="muted">각주가 아직 없습니다.</p>`);
+        } else {
+          const items = __REFS.map((refText, idx) => {
+            const n = idx + 1;
+            return `<li id="ref-${n}">${renderInline(refText)} <a href="#refback-${n}">↩︎</a></li>`;
+          }).join("");
+          out.push(`<ol class="reflist">${items}</ol>`);
+        }
+        i++;
+        continue;
+      }
+
+      // headings == ==
+      const mwHeading = line.match(/^(={2,6})\s*(.+?)\s*\1\s*$/);
+      if (mwHeading) {
+        const level = Math.min(6, Math.max(2, mwHeading[1].length));
+        out.push(`<h${level}>${renderInline(mwHeading[2])}</h${level}>`);
+        i++;
+        continue;
+      }
+
+      // HR
+      if (line.trim() === "---") {
+        out.push("<hr />");
+        i++;
+        continue;
+      }
+
+      // lists (* / #)
+      if (/^[*#]+\s+/.test(line)) {
+        const { html, nextIndex } = consumeMwList(localLines, i);
+        out.push(html);
+        i = nextIndex;
+        continue;
+      }
+
+      // quote >
+      if (line.startsWith(">")) {
+        const buf = [];
+        while (i < localLines.length && localLines[i].startsWith(">")) {
+          buf.push(localLines[i].replace(/^>\s?/, ""));
+          i++;
+        }
+        out.push(`<blockquote>${buf.map(l => `<p>${renderInline(l)}</p>`).join("")}</blockquote>`);
+        continue;
+      }
+
+      // paragraph (collect until blank line)
       const buf = [];
-      while (i < lines.length && lines[i].startsWith(">")) {
-        buf.push(lines[i].replace(/^>\s?/, ""));
+      while (i < localLines.length && localLines[i].trim()) {
+        buf.push(localLines[i]);
         i++;
       }
-      out.push(`<blockquote>${buf.map(l => `<p>${renderInline(l)}</p>`).join("")}</blockquote>`);
-      continue;
+      out.push(`<p>${renderParagraphWithLineBreaks(buf)}</p>`);
     }
 
-    // paragraph (collect until blank line)
-    const buf = [];
-    while (i < lines.length && lines[i].trim()) {
-      buf.push(lines[i]);
-      i++;
-    }
-    out.push(`<p>${renderParagraphWithLineBreaks(buf)}</p>`);
+    return out.join("\n");
   }
 
-  return out.join("\n");
+  return renderFromLines(lines);
 }
 
 /* =========================
