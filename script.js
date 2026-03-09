@@ -51,7 +51,8 @@ const WIKI_ID = "Review";
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
 
 /* ✅ 첫 화면(홈)에서 자동으로 여는 문서 제목 */
-const HOME_GUIDE_TITLE = "일요 독서모임은";
+const HOME_PAGE_TITLE = "일요 독서모임은";
+const HOME_PAGE_ID = toDocId(HOME_PAGE_TITLE);
 
 /* ✅ 문서당 히스토리 최대 개수 */
 const MAX_REVISIONS_PER_PAGE = 10;
@@ -238,16 +239,12 @@ function isRedirectPage(page) {
    Category
 ========================= */
 function getCategory(page) {
-  const title = (page.title || "").trim();
-
-  // ✅ guide page has no category
-  if (title === HOME_GUIDE_TITLE) return "";
+  // ✅ 홈 문서는 분류 없음
+  if (page?.id === HOME_PAGE_ID) return "";
 
   const { meta } = parseFrontMatter(page.content);
   const v = (meta.category || meta.type || "").trim();
-
-  // empty allowed
-  return v;
+  return v; // "" 가능
 }
 
 /* =========================
@@ -781,8 +778,8 @@ function route() {
 }
 
 function renderGuideHome() {
-  const guide = pickGuidePage();
-  if (guide) return renderPage(guide.id);
+  const exists = pages.some(p => p.id === HOME_PAGE_ID);
+  if (exists) return renderPage(HOME_PAGE_ID);
   return renderRecent();
 }
 
