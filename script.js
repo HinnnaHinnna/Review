@@ -74,6 +74,7 @@ let currentUser = null;
 let canEdit = false;
 
 let pages = [];                 // pages cache
+let pagesReady = false; // ✅ pages(문서 목록) 로딩 완료 여부
 let currentFilter = "all";      // selected category
 let sideQuery = "";             // sidebar search query
 
@@ -83,6 +84,10 @@ let __REFS = [];
 /* =========================
    Helpers
 ========================= */
+function renderLoading() {
+  viewEl.innerHTML = `<p class="muted">잠시 기다려봅시다.</p>`;
+}
+
 function escapeHtml(s) {
   // keep ' for MediaWiki emphasis ('' / ''')
   return String(s)
@@ -175,6 +180,7 @@ function startListeners() {
     query(pagesCol(), orderBy("updatedAt", "desc")),
     (snap) => {
       pages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      pagesReady = true;
       buildChips();
       buildList();
       route();
@@ -755,6 +761,10 @@ function pickGuidePage() {
 }
 
 function route() {
+  if (!pagesReady) {
+    renderLoading();
+    return;
+  }
   const hash = location.hash || "#/";
   const [path, qs] = hash.replace("#", "").split("?");
 
