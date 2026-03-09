@@ -51,7 +51,7 @@ const WIKI_ID = "Review";
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
 
 /* ✅ 첫 화면(홈)에서 자동으로 여는 문서 제목 */
-const HOME_GUIDE_TITLE = "처음";
+const HOME_GUIDE_TITLE = "일요 독서모임은";
 
 /* ✅ 문서당 히스토리 최대 개수 */
 const MAX_REVISIONS_PER_PAGE = 10;
