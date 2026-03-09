@@ -192,19 +192,29 @@ pre.code-block {
 }
 
 .page-list {
-  list-style: none;
-  padding: 0;
+  position: relative;
   margin: 12px 0 0 0;
-  display: grid;
-  gap: 6px
+  /* (기존 margin 있으면 이걸로 통일) */
+  padding: 0;
+  list-style: none
 }
 
 .page-item {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 10px 10px;
-  cursor: pointer;
-  background: #fff
+  position: relative;
+  padding: 10px 0;
+  padding-left: 10px;
+}
+
+/* 각 아이템 아래에 얇은 선(마지막 제외) */
+.page-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0px;
+  /* gap이 있으면 선 위치 조정 */
+  height: 1px;
+  background: var(--line);
 }
 
 .page-item:hover {
