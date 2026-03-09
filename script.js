@@ -213,6 +213,30 @@ function parseFrontMatter(raw) {
 
   return { meta, body };
 }
+
+function getRedirectTargetFromContent(content) {
+  const { body } = parseFrontMatter(String(content || ""));
+  const t = body.trim();
+
+  // MediaWiki: #REDIRECT [[Target]]  (대소문자 무시)
+  const m = t.match(/^#redirect\s*\[\[([^\]]+)\]\]/i);
+  if (!m) return null;
+
+  // [[target|label]] 형태면 target만 사용
+  const inside = (m[1] || "").trim();
+  const targetTitle = inside.includes("|") ? inside.split("|")[0].trim() : inside;
+  if (!targetTitle) return null;
+
+  return {
+    targetTitle,
+    targetId: toDocId(targetTitle)
+  };
+}
+
+function isRedirectPage(page) {
+  return !!getRedirectTargetFromContent(page?.content || "");
+}
+
 function getCategory(page) {
   const title = (page.title || "").trim();
 
@@ -656,6 +680,7 @@ function buildChips() {
 function buildList() {
   const qText = sideQuery.trim().toLowerCase();
   let list = [...pages];
+  list = list.filter(p => !isRedirectPage(p)); // ✅ 리다이렉트는 목록에서 숨김
 
   if (currentFilter !== "all") list = list.filter(p => getCategory(p) === currentFilter);
   if (qText) list = list.filter(p => (p.title || "").toLowerCase().includes(qText));
@@ -726,11 +751,46 @@ function renderRecent() {
 
 function renderPage(pageId) {
   const page = pages.find(p => p.id === pageId);
+
+  // ✅ 1) 먼저 존재 체크
   if (!page) {
     viewEl.innerHTML = `<h2 class="page-title">없음</h2><p>문서를 찾지 못했답니다.</p>`;
     return;
   }
 
+  // ✅ 2) 그 다음 리다이렉트 체크
+  const redirect = getRedirectTargetFromContent(page.content);
+  if (redirect) {
+    viewEl.innerHTML = `
+      <h2 class="page-title">${escapeHtml(page.title)}</h2>
+      <p class="muted">
+        이 문서는 <a href="#/page/${escapeHtml(redirect.targetId)}">${escapeHtml(redirect.targetTitle)}</a> 로 이동했습니다. 이동 중…
+      </p>
+
+      <div class="tools-row">
+        <button class="tool-link" type="button" id="go-btn">이동</button>
+        <button class="tool-link" type="button" id="stay-btn">여기 머물기</button>
+        <button class="tool-link" type="button" onclick="location.hash='#/history/${escapeHtml(pageId)}'">히스토리</button>
+      </div>
+    `;
+
+    const timer = setTimeout(() => {
+      location.hash = `#/page/${redirect.targetId}`;
+    }, 200);
+
+    document.getElementById("go-btn").addEventListener("click", () => {
+      clearTimeout(timer);
+      location.hash = `#/page/${redirect.targetId}`;
+    });
+
+    document.getElementById("stay-btn").addEventListener("click", () => {
+      clearTimeout(timer);
+    });
+
+    return;
+  }
+
+  // ✅ 3) 리다이렉트가 아니면 기존 렌더 계속
   const { meta, body } = parseFrontMatter(page.content);
   const metaBits = [];
   if (meta.category) metaBits.push(`category: ${meta.category}`);
@@ -753,29 +813,32 @@ function renderPage(pageId) {
     </div>
   `;
 
-  document.getElementById("edit-btn").addEventListener("click", () => {
-    if (!canEdit) return alert("편집하려면 로그인해야 함다.");
-    location.hash = `#/edit/${pageId}`;
-  });
+}
 
-  document.getElementById("history-btn").addEventListener("click", () => {
-    location.hash = `#/history/${pageId}`;
-  });
+document.getElementById("edit-btn").addEventListener("click", () => {
+  if (!canEdit) return alert("편집하려면 로그인해야 함다.");
+  location.hash = `#/edit/${pageId}`;
+});
 
-  if (canEdit) {
-    document.getElementById("delete-btn").addEventListener("click", () => {
-      deletePageCompletely(pageId);
-    });
-  }
+document.getElementById("history-btn").addEventListener("click", () => {
+  location.hash = `#/history/${pageId}`;
+});
+
+if (canEdit) {
+  document.getElementById("delete-btn").addEventListener("click", () => {
+    deletePageCompletely(pageId);
+  });
+}
 }
 
 function renderSearch(q) {
   const queryText = (q || "").trim();
   const normalized = queryText.toLowerCase();
-
+  const searchable = pages.filter(p => !isRedirectPage(p));
   const results = queryText
-    ? pages.filter(p => ((p.title || "") + "\n" + (p.content || "")).toLowerCase().includes(normalized))
+    ? searchable.filter(p => ((p.title || "") + "\n" + (p.content || "")).toLowerCase().includes(normalized))
     : [];
+
 
   viewEl.innerHTML = `
     <h2 class="page-title">검색</h2>
@@ -942,14 +1005,54 @@ async function savePage({ mode, oldId, title, content }) {
   if (!canEdit) throw new Error("not logged in");
 
   const now = Date.now();
+  const isEdit = mode === "edit" && !!oldId;
+
+  // 새 제목에서 새 슬러그
   const newId = toDocId(title);
 
+  // 편집이면 기존 문서 찾아서 createdAt/aliases 유지
+  const prev = isEdit ? pages.find(p => p.id === oldId) : null;
+  const createdAt = prev?.createdAt || now;
+  const prevAliases = Array.isArray(prev?.aliases) ? prev.aliases : [];
+
+  // ✅ (1) 편집인데 제목이 바뀌지 않았다 → 기존 ID 그대로 업데이트
+  if (isEdit && newId === oldId) {
+    await setDoc(pageDoc(oldId), {
+      title,
+      content,
+      createdAt,
+      updatedAt: now,
+      updatedBy: currentUser?.email || "unknown",
+      aliases: prevAliases
+    });
+
+    await addRevision(oldId, {
+      title,
+      content,
+      savedBy: currentUser?.email || "unknown",
+      savedAt: now,
+      note: "edit"
+    });
+
+    return oldId;
+  }
+
+  // ✅ (2) 새 문서이거나, 편집 중 제목이 바뀌어서 “이동”이 필요한 경우
+  // 새 문서의 aliases는:
+  // - 새 문서(new): []
+  // - 이동(rename): 기존 aliases + oldId 누적
+  const aliases = isEdit
+    ? Array.from(new Set([...prevAliases, oldId]))
+    : [];
+
+  // (2-1) 새 ID(newId)에 본문 저장
   await setDoc(pageDoc(newId), {
     title,
     content,
-    createdAt: mode === "edit" ? (pages.find(p => p.id === oldId)?.createdAt || now) : now,
+    createdAt,
     updatedAt: now,
-    updatedBy: currentUser?.email || "unknown"
+    updatedBy: currentUser?.email || "unknown",
+    aliases
   });
 
   await addRevision(newId, {
@@ -957,8 +1060,36 @@ async function savePage({ mode, oldId, title, content }) {
     content,
     savedBy: currentUser?.email || "unknown",
     savedAt: now,
-    note: mode
+    note: isEdit ? `rename-from:${oldId}` : "new"
   });
+
+  // (2-2) 편집 중 제목 변경(=이동)이라면, oldId 문서를 리다이렉트로 바꿈
+  if (isEdit && oldId && oldId !== newId) {
+    const oldTitle = prev?.title || oldId;
+    const redirectContent =
+      `---
+redirect: true
+---
+#REDIRECT [[${title}]]`;
+
+    await setDoc(pageDoc(oldId), {
+      title: oldTitle,           // ✅ 예전 문서 제목 유지(깔끔)
+      content: redirectContent,
+      createdAt,
+      updatedAt: now,
+      updatedBy: currentUser?.email || "unknown",
+      // (선택) 디버깅/관리용
+      redirectTo: newId
+    });
+
+    await addRevision(oldId, {
+      title: oldTitle,
+      content: redirectContent,
+      savedBy: currentUser?.email || "unknown",
+      savedAt: now,
+      note: `redirect-to:${newId}`
+    });
+  }
 
   return newId;
 }
