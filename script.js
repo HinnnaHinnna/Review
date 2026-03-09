@@ -941,7 +941,7 @@ function renderPage(pageId) {
 
     <hr />
 
-    <div class="doc">${renderWiki(String(r.content || ""))}</div>
+    <div class="doc">${renderWiki(body)}</div>
 
     <div class="tools-row">
       <button class="tool-link" type="button" id="edit-btn">편집</button>
