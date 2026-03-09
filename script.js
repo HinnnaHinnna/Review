@@ -85,7 +85,7 @@ let __REFS = [];
    Helpers
 ========================= */
 function renderLoading() {
-  viewEl.innerHTML = `<p class="muted">잠시 기다려봅시다.</p>`;
+  viewEl.innerHTML = `<p class="muted">일요 독서모임 불러오는 중</p>`;
 }
 
 function escapeHtml(s) {
