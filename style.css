@@ -511,6 +511,8 @@ details.mw-hide>summary {
   text-decoration: none;
   padding: 0;
   margin: 0;
+  padding-left: 0;
+  /* 기본 0 */
 }
 
 /* 마커 제거(브라우저 기본 삼각형) */
@@ -533,6 +535,8 @@ details.mw-hide>summary:hover {
 details.mw-hide .mw-hide-body {
   margin: 0;
   padding: 0;
+  padding-left: 18px;
+  /* [+] 포함한 폭과 맞추기 */
 }
 
 /* ✅ 접힘/펼침 표시: 기본은 [+], 열리면 [-] */
@@ -543,6 +547,26 @@ details.mw-hide>summary::before {
 details.mw-hide[open]>summary::before {
   content: "[-] ";
 }
+
+/* ✅ 열렸을 때 summary 아래 간격(본문 시작 위쪽) 조절 */
+details.mw-hide[open]>summary {
+  margin-bottom: 4px;
+  /* 제목-본문 사이 간격 */
+}
+
+/* ✅ 본문 영역: 위쪽 여백 최소 + 들여쓰기 */
+details.mw-hide .mw-hide-body {
+  padding-left: 14px;
+  /* ✅ 들여쓰기(원하는 만큼 조절) */
+  padding-top: 0px;
+  /* 필요하면 2px 정도로 */
+}
+
+/* ✅ 본문 첫 요소(p/ul/ol 등)의 기본 margin-top 제거 */
+details.mw-hide .mw-hide-body> :first-child {
+  margin-top: 0;
+}
+
 
 @media (max-width:960px) {
 
