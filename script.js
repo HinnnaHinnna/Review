@@ -5,8 +5,8 @@
   - History: keep only latest 10 per page
   - History view + revision detail + revert
   - Delete page + delete its revisions + delete its alias redirect pages
-  - No image upload (Storage / images collection removed)
-  - Enter line breaks: newline -> <br>, blank line -> new paragraph
+  - OCR in editor:
+    이미지 선택 -> OCR 실행 -> 결과 확인 -> 본문 삽입/추가
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
@@ -34,7 +34,9 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 
-/* ✅ Firebase config */
+/* =========================================================
+   Firebase config
+========================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyASuyxEO3eBSmJmPwV7ZVxG6rb109G_1nE",
   authDomain: "sunday-book-club.firebaseapp.com",
@@ -47,21 +49,29 @@ const firebaseConfig = {
 
 const WIKI_ID = "Review";
 
-/* ✅ 왼쪽 카테고리 칩 */
+/* =========================================================
+   왼쪽 카테고리 칩
+========================================================= */
 const CATEGORY_OPTIONS = ["미디어의 이해", "다른 방식으로 보기", "이미지란 무엇인가"];
 
-/* ✅ 첫 화면(홈)에서 자동으로 여는 문서 제목 */
+/* =========================================================
+   첫 화면에서 자동으로 여는 문서
+========================================================= */
 const HOME_PAGE_TITLE = "일요 독서모임은";
 const HOME_PAGE_ID = toDocId(HOME_PAGE_TITLE);
 
-/* ✅ 문서당 히스토리 최대 개수 */
+/* =========================================================
+   문서당 히스토리 최대 개수
+========================================================= */
 const MAX_REVISIONS_PER_PAGE = 10;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* DOM */
+/* =========================================================
+   DOM
+========================================================= */
 const viewEl = document.getElementById("view");
 const pageListEl = document.getElementById("page-list");
 const sideSearchInput = document.getElementById("side-search-input");
@@ -69,27 +79,35 @@ const authBtn = document.getElementById("auth-btn");
 const authStatus = document.getElementById("auth-status");
 const chipWrap = document.getElementById("category-chips");
 
-/* State */
+/* =========================================================
+   State
+========================================================= */
 let currentUser = null;
 let canEdit = false;
 
-let pages = [];                 // pages cache
-let pagesReady = false; // ✅ pages(문서 목록) 로딩 완료 여부
-let currentFilter = "all";      // selected category
-let sideQuery = "";             // sidebar search query
+let pages = [];
+let pagesReady = false;
+let currentFilter = "all";
+let sideQuery = "";
 
-/* One render pass */
 let __REFS = [];
 
-/* =========================
+/* =========================================================
+   OCR 상태
+   - worker를 매번 새로 만들지 않고 재사용
+   - 사용자가 편집 모드에서 여러 이미지 OCR해도 조금 덜 무거움
+========================================================= */
+let ocrWorker = null;
+let ocrLoggerProxy = null;
+
+/* =========================================================
    Helpers
-========================= */
+========================================================= */
 function renderLoading() {
   viewEl.innerHTML = `<p class="muted">다른 방식으로 읽기 불러오는 중</p>`;
 }
 
 function escapeHtml(s) {
-  // keep ' for MediaWiki emphasis ('' / ''')
   return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -120,29 +138,142 @@ function isUrlLike(s) {
   return /^https?:\/\//i.test(s);
 }
 
-/* Firestore paths */
+function cleanupOcrText(text) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/* 
+  본문 끝에 OCR 결과를 덧붙일 때 사용.
+  기존 내용이 있으면 두 줄 띄고 추가한다.
+*/
+function appendBlockText(original, extra) {
+  const source = String(original || "");
+  const add = cleanupOcrText(extra);
+
+  if (!add) return source;
+  if (!source.trim()) return add;
+
+  return source.replace(/\s*$/, "") + "\n\n" + add;
+}
+
+/*
+  커서 위치에 텍스트 삽입.
+  사용자가 본문 중간 원하는 위치에 OCR 결과를 꽂을 수 있게 해준다.
+*/
+function insertTextAtCursor(textarea, text) {
+  if (!textarea) return;
+
+  const insertText = String(text || "");
+  const start = Number(textarea.selectionStart ?? textarea.value.length);
+  const end = Number(textarea.selectionEnd ?? textarea.value.length);
+
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+
+  textarea.value = before + insertText + after;
+
+  const nextPos = before.length + insertText.length;
+  textarea.selectionStart = nextPos;
+  textarea.selectionEnd = nextPos;
+  textarea.focus();
+}
+
+/* =========================================================
+   Firestore paths
+========================================================= */
 const pagesCol = () => collection(db, "wikis", WIKI_ID, "pages");
 const pageDoc = (pageId) => doc(db, "wikis", WIKI_ID, "pages", pageId);
 const revisionsCol = (pageId) => collection(db, "wikis", WIKI_ID, "pages", pageId, "revisions");
 
-/* =========================
+/* =========================================================
    Auth
-========================= */
+========================================================= */
 async function login() {
   const provider = new GoogleAuthProvider();
+
   try {
     await signInWithPopup(auth, provider);
   } catch {
     await signInWithRedirect(auth, provider);
   }
 }
+
 async function logout() {
   await signOut(auth);
 }
 
-/* =========================
-   Seed (only if empty)
-========================= */
+/* =========================================================
+   OCR
+   - 브라우저 안에서 실행
+   - Firebase Storage를 쓰지 않음
+   - 이미지는 로컬 파일로만 읽고, 최종 텍스트만 저장
+========================================================= */
+async function getOrCreateOcrWorker(loggerCallback) {
+  if (!window.Tesseract || typeof window.Tesseract.createWorker !== "function") {
+    throw new Error("OCR 라이브러리를 불러오지 못했어.");
+  }
+
+  ocrLoggerProxy = typeof loggerCallback === "function" ? loggerCallback : null;
+
+  if (ocrWorker) {
+    return ocrWorker;
+  }
+
+  try {
+    const { createWorker } = window.Tesseract;
+
+    ocrWorker = await createWorker(["kor", "eng"], 1, {
+      logger: (message) => {
+        if (typeof ocrLoggerProxy === "function") {
+          ocrLoggerProxy(message);
+        }
+      }
+    });
+
+    /*
+      OCR 인식 보정용 파라미터
+      - preserve_interword_spaces: 단어 사이 공백 보존 시도
+      - user_defined_dpi: 저해상도 이미지에서 약간의 보정 효과 기대
+    */
+    await ocrWorker.setParameters({
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300"
+    });
+
+    return ocrWorker;
+  } catch (error) {
+    ocrWorker = null;
+    throw error;
+  }
+}
+
+async function runOcrFromFile(file, onProgress) {
+  if (!file) {
+    throw new Error("OCR할 이미지 파일을 먼저 골라줘.");
+  }
+
+  const worker = await getOrCreateOcrWorker(onProgress);
+  const result = await worker.recognize(file);
+  return result?.data?.text || "";
+}
+
+window.addEventListener("beforeunload", async () => {
+  if (ocrWorker) {
+    try {
+      await ocrWorker.terminate();
+    } catch (error) {
+      console.warn("OCR worker 종료 중 경고:", error);
+    }
+  }
+});
+
+/* =========================================================
+   Seed
+========================================================= */
 async function ensureSeededOnce() {
   const snap = await getDocs(query(pagesCol(), limit(1)));
   if (!snap.empty) return;
@@ -172,9 +303,9 @@ async function ensureSeededOnce() {
   }
 }
 
-/* =========================
+/* =========================================================
    Live listeners
-========================= */
+========================================================= */
 function startListeners() {
   onSnapshot(
     query(pagesCol(), orderBy("updatedAt", "desc")),
@@ -192,9 +323,9 @@ function startListeners() {
   );
 }
 
-/* =========================
+/* =========================================================
    Front matter
-========================= */
+========================================================= */
 function parseFrontMatter(raw) {
   const text = String(raw || "");
   if (!text.startsWith("---\n")) return { meta: {}, body: text };
@@ -218,18 +349,16 @@ function parseFrontMatter(raw) {
   return { meta, body };
 }
 
-/* =========================
+/* =========================================================
    Redirect helpers
-========================= */
+========================================================= */
 function getRedirectTargetFromContent(content) {
   const { body } = parseFrontMatter(String(content || ""));
   const t = body.trim();
 
-  // MediaWiki: #REDIRECT [[Target]]  (case-insensitive)
   const m = t.match(/^#redirect\s*\[\[([^\]]+)\]\]/i);
   if (!m) return null;
 
-  // if [[target|label]] => use target only
   const inside = (m[1] || "").trim();
   const targetTitle = inside.includes("|") ? inside.split("|")[0].trim() : inside;
   if (!targetTitle) return null;
@@ -241,21 +370,19 @@ function isRedirectPage(page) {
   return !!getRedirectTargetFromContent(page?.content || "");
 }
 
-/* =========================
+/* =========================================================
    Category
-========================= */
+========================================================= */
 function getCategory(page) {
-  // ✅ 홈 문서는 분류 없음
   if (page?.id === HOME_PAGE_ID) return "";
 
   const { meta } = parseFrontMatter(page.content);
-  const v = (meta.category || meta.type || "").trim();
-  return v; // "" 가능
+  return (meta.category || meta.type || "").trim();
 }
 
-/* =========================
-   Inline code protection (`...`)
-========================= */
+/* =========================================================
+   Inline code protection
+========================================================= */
 function protectInlineCode(rawText) {
   const codes = [];
   const replaced = String(rawText || "").replace(/`([^`\n]+)`/g, (m, inner) => {
@@ -266,44 +393,37 @@ function protectInlineCode(rawText) {
   return { text: replaced, codes };
 }
 
-/* =========================
+/* =========================================================
    Inline render
-========================= */
+========================================================= */
 function renderInline(text) {
   let raw = normalizeSmartQuotes(String(text || ""));
 
-  // 1) protect inline code first (so code won't be parsed)
   const protectedResult = protectInlineCode(raw);
   raw = protectedResult.text;
   const codes = protectedResult.codes;
 
-  // 2) remove HTML comments outside inline code
   raw = raw.replace(/<!--[\s\S]*?-->/g, "");
 
   let t = escapeHtml(raw);
 
-  // External link: [https://url label]
   t = t.replace(/\[(https?:\/\/[^\s\]]+)(?:\s+([^\]]+))?\]/g, (m, url, label) => {
     const u = escapeHtml(url);
     const l = escapeHtml((label || url).trim());
     return `<a href="${u}" target="_blank" rel="noopener noreferrer">${l}</a>`;
   });
 
-  // MediaWiki emphasis
   t = t.replace(/'''''(.+?)'''''/g, "<strong><em>$1</em></strong>");
   t = t.replace(/'''(.+?)'''/g, "<strong>$1</strong>");
   t = t.replace(/''(.+?)''/g, "<em>$1</em>");
 
-  // Markdown emphasis (optional)
   t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
 
-  // Markdown link [label](url)
   t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (m, label, url) => {
     return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
   });
 
-  // Markdown image ![alt](url) (external only)
   t = t.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (m, alt, url) => {
     const safeUrl = escapeHtml(url);
     const safeAlt = escapeHtml(alt || "");
@@ -317,7 +437,6 @@ function renderInline(text) {
     `;
   });
 
-  // Wiki image [[Image:https://...|caption]] (external only)
   t = t.replace(/\[\[(?:Image|File|파일|이미지)\:(https?:\/\/[^\]|]+)(?:\|([^\]]+))?\]\]/gi, (m, url, cap) => {
     const safeUrl = escapeHtml(url.trim());
     const safeCap = escapeHtml((cap || "").trim());
@@ -331,7 +450,6 @@ function renderInline(text) {
     `;
   });
 
-  // Wiki link: [[target]] or [[target|label]]
   t = t.replace(/\[\[([^\]]+)\]\]/g, (m, inner) => {
     const raw2 = (inner || "").trim();
 
@@ -353,18 +471,15 @@ function renderInline(text) {
     return `<a href="#/page/${toDocId(raw2)}">${escapeHtml(raw2)}</a>`;
   });
 
-  // ref placeholder {{REF:n}}
   t = t.replace(/\{\{REF:(\d+)\}\}/g, (m, n) => {
     const num = Number(n);
     return `<sup class="ref"><a href="#ref-${num}" id="refback-${num}">[${num}]</a></sup>`;
   });
 
-  // bare URL autolink
   t = t.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g, (m, lead, url) => {
     return `${lead}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
 
-  // restore inline code
   t = t.replace(/\{\{CODE:(\d+)\}\}/g, (m, idxStr) => {
     const idx = Number(idxStr);
     const codeRaw = codes[idx] ?? "";
@@ -374,10 +489,9 @@ function renderInline(text) {
   return t;
 }
 
-/* =========================
-   Fenced code blocks extractor (``` / ~~~)
-   - protects code blocks from ref/comment parsing
-========================= */
+/* =========================================================
+   Code blocks
+========================================================= */
 function extractFencedCodeBlocks(lines) {
   const blocks = [];
   const outLines = [];
@@ -392,7 +506,7 @@ function extractFencedCodeBlocks(lines) {
 
     const fence = m[1];
     const codeLines = [];
-    i++; // start reading inside block
+    i++;
 
     while (i < lines.length && !lines[i].trim().startsWith(fence)) {
       codeLines.push(lines[i]);
@@ -407,9 +521,6 @@ function extractFencedCodeBlocks(lines) {
   return { lines: outLines, blocks };
 }
 
-/* =========================
-   Protect inline code across whole text (so <!-- --> / <ref> won't touch it)
-========================= */
 function protectInlineCodeWholeText(text) {
   const codes = [];
   const out = String(text || "").replace(/`([^`\n]+)`/g, (m, inner) => {
@@ -419,6 +530,7 @@ function protectInlineCodeWholeText(text) {
   });
   return { text: out, codes };
 }
+
 function restoreInlineCodeWholeText(text, codes) {
   return String(text || "").replace(/\{\{INLINECODE:(\d+)\}\}/g, (m, n) => {
     const idx = Number(n);
@@ -427,9 +539,9 @@ function restoreInlineCodeWholeText(text, codes) {
   });
 }
 
-/* =========================
-   MediaWiki list (* / #)
-========================= */
+/* =========================================================
+   MediaWiki list
+========================================================= */
 function consumeMwList(lines, startIndex) {
   let i = startIndex;
   const out = [];
@@ -444,6 +556,7 @@ function consumeMwList(lines, startIndex) {
       openLiDepth = 0;
     }
   }
+
   function closeListsTo(commonDepth) {
     while (stack.length > commonDepth) {
       if (openLiDepth === stack.length) {
@@ -453,6 +566,7 @@ function consumeMwList(lines, startIndex) {
       out.push(`</${stack.pop()}>`);
     }
   }
+
   function openListsFrom(commonDepth, targetTypes) {
     for (let d = commonDepth; d < targetTypes.length; d++) {
       out.push(`<${targetTypes[d]}>`);
@@ -470,7 +584,9 @@ function consumeMwList(lines, startIndex) {
     const targetTypes = prefix.split("").map(typeOf);
 
     let common = 0;
-    while (common < stack.length && common < targetTypes.length && stack[common] === targetTypes[common]) common++;
+    while (common < stack.length && common < targetTypes.length && stack[common] === targetTypes[common]) {
+      common++;
+    }
 
     closeLiIfNeeded(targetTypes.length);
     closeListsTo(common);
@@ -493,57 +609,44 @@ function consumeMwList(lines, startIndex) {
   return { html: out.join(""), nextIndex: i };
 }
 
-/* =========================
-   Paragraph line breaks:
-   - newline => <br>
-   - blank line => new paragraph (handled by renderWiki loop)
-========================= */
 function renderParagraphWithLineBreaks(linesBuf) {
   return linesBuf.map(line => renderInline(line)).join("<br>");
 }
 
-/* =========================
-   Block render (with code protection)
-========================= */
+/* =========================================================
+   Wiki render
+========================================================= */
 function renderWiki(body) {
   const originalLines = normalizeSmartQuotes(String(body || ""))
     .replaceAll("\r\n", "\n")
     .split("\n");
 
-  // 1) code block 보호 (```/~~~)
   const extracted = extractFencedCodeBlocks(originalLines);
   let text = extracted.lines.join("\n");
   const codeBlocks = extracted.blocks;
 
-  // 2) 인라인 코드(`...`)도 먼저 보호 (주석/각주/숨김 템플릿이 코드 안에서 발동하지 않게)
   const inlineProtected = protectInlineCodeWholeText(text);
   text = inlineProtected.text;
   const inlineCodes = inlineProtected.codes;
 
-  // 3) 주석 제거(코드 밖에서만)
   text = text.replace(/<!--[\s\S]*?-->/g, "");
 
-  // 4) 각주(ref) 추출(코드 밖에서만)
   __REFS = [];
   text = text.replace(/<ref>([\s\S]*?)<\/ref>/gi, (m, inner) => {
     __REFS.push((inner || "").trim());
     return `{{REF:${__REFS.length}}}`;
   });
 
-  // ✅ 5) 숨김(접기) 템플릿을 토큰으로 변환
-  // 제목 필수: {{숨김 시작|제목=...}} 만 변환됨 (제목 없으면 그대로 텍스트로 남음)
   text = text.replace(
     /\{\{\s*숨김\s*시작\s*\|\s*제목\s*=\s*([^}]+?)\s*\}\}/g,
     (m, titleRaw) => `\n{{HIDE_START:${encodeURIComponent(String(titleRaw).trim())}}}\n`
   );
   text = text.replace(/\{\{\s*숨김\s*끝\s*\}\}/g, "\n{{HIDE_END}}\n");
 
-  // 6) 인라인 코드 토큰 복원(`...`)
   text = restoreInlineCodeWholeText(text, inlineCodes);
 
   const lines = text.split("\n");
 
-  // ✅ lines 배열을 재귀적으로 렌더링(숨김 블록 내부도 같은 규칙 적용)
   function renderFromLines(localLines) {
     const out = [];
     let i = 0;
@@ -556,7 +659,6 @@ function renderWiki(body) {
         continue;
       }
 
-      // restore code blocks (no parsing inside)
       const cb = line.trim().match(/^\{\{CODEBLOCK:(\d+)\}\}$/);
       if (cb) {
         const idx = Number(cb[1]);
@@ -566,13 +668,11 @@ function renderWiki(body) {
         continue;
       }
 
-      // ✅ hide start / end
       const hs = line.trim().match(/^\{\{HIDE_START:(.+)\}\}$/);
       if (hs) {
         const title = decodeURIComponent(hs[1] || "");
         i++;
 
-        // depth로 중첩도 안전하게 처리
         const inner = [];
         let depth = 1;
 
@@ -590,7 +690,7 @@ function renderWiki(body) {
           if (he2) {
             depth--;
             if (depth === 0) {
-              i++; // end 토큰 소비
+              i++;
               break;
             }
             inner.push(l);
@@ -613,12 +713,10 @@ function renderWiki(body) {
       }
 
       if (line.trim() === "{{HIDE_END}}") {
-        // 짝이 안 맞는 end는 무시(문서 깨짐 방지)
         i++;
         continue;
       }
 
-      // <references/>
       if (/^<references\s*\/\s*>$/i.test(line.trim())) {
         if (!__REFS.length) {
           out.push(`<p class="muted">각주가 아직 없습니다.</p>`);
@@ -633,7 +731,6 @@ function renderWiki(body) {
         continue;
       }
 
-      // headings == ==
       const mwHeading = line.match(/^(={2,6})\s*(.+?)\s*\1\s*$/);
       if (mwHeading) {
         const level = Math.min(6, Math.max(2, mwHeading[1].length));
@@ -642,14 +739,12 @@ function renderWiki(body) {
         continue;
       }
 
-      // HR
       if (line.trim() === "---") {
         out.push("<hr />");
         i++;
         continue;
       }
 
-      // lists (* / #)
       if (/^[*#]+\s+/.test(line)) {
         const { html, nextIndex } = consumeMwList(localLines, i);
         out.push(html);
@@ -657,7 +752,6 @@ function renderWiki(body) {
         continue;
       }
 
-      // quote >
       if (line.startsWith(">")) {
         const buf = [];
         while (i < localLines.length && localLines[i].startsWith(">")) {
@@ -668,7 +762,6 @@ function renderWiki(body) {
         continue;
       }
 
-      // paragraph (collect until blank line)
       const buf = [];
       while (i < localLines.length && localLines[i].trim()) {
         buf.push(localLines[i]);
@@ -683,9 +776,9 @@ function renderWiki(body) {
   return renderFromLines(lines);
 }
 
-/* =========================
-   History: keep only latest N
-========================= */
+/* =========================================================
+   History
+========================================================= */
 async function pruneRevisions(pageId) {
   try {
     const snap = await getDocs(query(revisionsCol(pageId), orderBy("savedAt", "desc")));
@@ -715,9 +808,9 @@ async function addRevision(pageId, { title, content, savedBy, savedAt, note }) {
   await pruneRevisions(pageId);
 }
 
-/* =========================
-   Delete page + revisions + alias redirect pages
-========================= */
+/* =========================================================
+   Delete page
+========================================================= */
 async function deleteAllRevisions(pageId) {
   while (true) {
     const snap = await getDocs(query(revisionsCol(pageId), limit(50)));
@@ -741,14 +834,12 @@ async function deletePageCompletely(pageId) {
   if (!ok) return;
 
   try {
-    // 1) delete alias redirect pages too (if main page has aliases)
     const aliasIds = Array.isArray(page?.aliases) ? page.aliases : [];
     for (const aliasId of aliasIds) {
       await deleteAllRevisions(aliasId);
       await deleteDoc(pageDoc(aliasId));
     }
 
-    // 2) delete this page's revisions + page
     await deleteAllRevisions(pageId);
     await deleteDoc(pageDoc(pageId));
 
@@ -759,9 +850,9 @@ async function deletePageCompletely(pageId) {
   }
 }
 
-/* =========================
+/* =========================================================
    Chips UI
-========================= */
+========================================================= */
 function buildChips() {
   chipWrap.innerHTML = "";
 
@@ -790,19 +881,22 @@ function buildChips() {
   });
 }
 
-/* =========================
+/* =========================================================
    Sidebar list
-========================= */
+========================================================= */
 function buildList() {
   const qText = sideQuery.trim().toLowerCase();
 
   let list = [...pages];
-
-  // ✅ hide redirect pages from list
   list = list.filter(p => !isRedirectPage(p));
 
-  if (currentFilter !== "all") list = list.filter(p => getCategory(p) === currentFilter);
-  if (qText) list = list.filter(p => (p.title || "").toLowerCase().includes(qText));
+  if (currentFilter !== "all") {
+    list = list.filter(p => getCategory(p) === currentFilter);
+  }
+
+  if (qText) {
+    list = list.filter(p => (p.title || "").toLowerCase().includes(qText));
+  }
 
   list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
@@ -824,31 +918,31 @@ function buildList() {
   });
 }
 
-/* =========================
+/* =========================================================
    Routing
-========================= */
-function pickGuidePage() {
-  return pages.find(p => (p.title || "").trim() === HOME_GUIDE_TITLE) || null;
-}
-
+========================================================= */
 function route() {
   if (!pagesReady) {
     renderLoading();
     return;
   }
+
   const hash = location.hash || "#/";
   const [path, qs] = hash.replace("#", "").split("?");
 
   if (path === "/") return renderGuideHome();
   if (path === "/recent") return renderRecent();
+
   if (path === "/search") {
     const params = new URLSearchParams(qs || "");
     return renderSearch((params.get("q") || "").trim());
   }
+
   if (path === "/new") return renderEditor({ mode: "new" });
   if (path.startsWith("/page/")) return renderPage(path.replace("/page/", ""));
   if (path.startsWith("/edit/")) return renderEditor({ mode: "edit", slug: path.replace("/edit/", "") });
   if (path.startsWith("/history/")) return renderHistory(path.replace("/history/", ""));
+
   if (path.startsWith("/revision/")) {
     const rest = path.replace("/revision/", "");
     const [pageId, revId] = rest.split("/");
@@ -878,9 +972,9 @@ function renderRecent() {
   `;
 }
 
-/* =========================
-   Page view (includes redirect handling)
-========================= */
+/* =========================================================
+   Page view
+========================================================= */
 function renderPage(pageId) {
   const page = pages.find(p => p.id === pageId);
 
@@ -889,7 +983,6 @@ function renderPage(pageId) {
     return;
   }
 
-  // ✅ redirect?
   const redirect = getRedirectTargetFromContent(page.content);
   if (redirect) {
     viewEl.innerHTML = `
@@ -950,7 +1043,6 @@ function renderPage(pageId) {
     </div>
   `;
 
-  // ✅ bind after DOM exists
   document.getElementById("edit-btn").addEventListener("click", () => {
     if (!canEdit) return alert("편집하려면 로그인해야 해.");
     location.hash = `#/edit/${pageId}`;
@@ -966,9 +1058,9 @@ function renderPage(pageId) {
   }
 }
 
-/* =========================
-   Search (hide redirect pages)
-========================= */
+/* =========================================================
+   Search
+========================================================= */
 function renderSearch(q) {
   const queryText = (q || "").trim();
   const normalized = queryText.toLowerCase();
@@ -1000,9 +1092,9 @@ function renderSearch(q) {
   });
 }
 
-/* =========================
-   History view (latest N)
-========================= */
+/* =========================================================
+   History view
+========================================================= */
 async function renderHistory(pageId) {
   viewEl.innerHTML = `<h2 class="page-title">히스토리</h2><p class="muted">불러오는 중...</p>`;
 
@@ -1039,9 +1131,9 @@ async function renderHistory(pageId) {
   }
 }
 
-/* =========================
+/* =========================================================
    Revision detail + revert
-========================= */
+========================================================= */
 async function renderRevision(pageId, revId) {
   viewEl.innerHTML = `<h2 class="page-title">리비전</h2><p class="muted">불러오는 중...</p>`;
 
@@ -1108,9 +1200,9 @@ async function renderRevision(pageId, revId) {
   }
 }
 
-/* =========================
-   Save page (new / edit / rename => redirect)
-========================= */
+/* =========================================================
+   Save page
+========================================================= */
 async function savePage({ mode, oldId, title, content }) {
   if (!canEdit) throw new Error("not logged in");
 
@@ -1123,15 +1215,13 @@ async function savePage({ mode, oldId, title, content }) {
   const prevCreatedAt = prev?.createdAt || now;
   const prevAliases = Array.isArray(prev?.aliases) ? prev.aliases : [];
 
-  const dest = pages.find(p => p.id === newId) || null; // ✅ 충돌 대상 문서(있으면 덮어씀)
+  const dest = pages.find(p => p.id === newId) || null;
   const existsNew = !!dest;
 
-  // ✅ 새 문서(new) 만들 때는 여전히 안전하게 막음 (원하면 이것도 덮어쓰게 바꿀 수 있음)
   if (!isEdit && existsNew) {
     throw new Error("이미 같은 제목(슬러그)의 문서가 존재합니다.");
   }
 
-  // ✅ 1) 편집인데 슬러그가 그대로면: 기존 문서 업데이트
   if (isEdit && newId === oldId) {
     await setDoc(pageDoc(oldId), {
       title,
@@ -1153,13 +1243,9 @@ async function savePage({ mode, oldId, title, content }) {
     return oldId;
   }
 
-  // ✅ 2) 편집 중 제목 변경(= 이동)인데, 목적지(newId)가 이미 존재하면: 덮어쓰기(OVERWRITE)
   if (isEdit && oldId && oldId !== newId && existsNew) {
     const destAliases = Array.isArray(dest.aliases) ? dest.aliases : [];
 
-    // (2-0) 덮어쓰기 전에 목적지 문서의 기존 내용을 "백업 리비전"으로 남김
-    //       (히스토리 10개 제한이 있어서 오래된 건 밀릴 수 있지만,
-    //        최소한 직전 상태는 히스토리에 남게 됨)
     await addRevision(newId, {
       title: dest.title || title,
       content: String(dest.content || ""),
@@ -1168,14 +1254,11 @@ async function savePage({ mode, oldId, title, content }) {
       note: `backup-before-overwrite-from:${oldId}`
     });
 
-    // createdAt은 둘 중 더 오래된(더 작은) 값을 유지
     const destCreatedAt = typeof dest.createdAt === "number" ? dest.createdAt : now;
     const createdAt = Math.min(destCreatedAt, prevCreatedAt);
 
-    // aliases는 목적지/원본/oldId 모두 합쳐서 유지
     const mergedAliases = Array.from(new Set([...destAliases, ...prevAliases, oldId]));
 
-    // (2-1) 목적지 문서(newId)를 "지금 편집한 내용"으로 덮어쓰기
     await setDoc(pageDoc(newId), {
       title,
       content,
@@ -1193,7 +1276,6 @@ async function savePage({ mode, oldId, title, content }) {
       note: `overwrite-from:${oldId}`
     });
 
-    // (2-2) 원래 문서(oldId)는 리다이렉트로 바꿈
     const oldTitle = prev?.title || oldId;
     const redirectContent =
       `---
@@ -1217,10 +1299,9 @@ redirect: true
       note: `redirect-to:${newId}`
     });
 
-    return newId; // ✅ URL도 새 슬러그로 이동
+    return newId;
   }
 
-  // ✅ 3) (충돌 없음) 새 문서 OR 편집 중 정상 이동(rename)
   const aliases = isEdit ? Array.from(new Set([...prevAliases, oldId])) : [];
 
   await setDoc(pageDoc(newId), {
@@ -1240,7 +1321,6 @@ redirect: true
     note: isEdit ? `rename-from:${oldId}` : "new"
   });
 
-  // 이동이면 oldId를 리다이렉트로
   if (isEdit && oldId && oldId !== newId) {
     const oldTitle = prev?.title || oldId;
     const redirectContent =
@@ -1269,9 +1349,10 @@ redirect: true
   return newId;
 }
 
-/* =========================
+/* =========================================================
    Editor
-========================= */
+   - 여기서 OCR UI를 함께 렌더링한다.
+========================================================= */
 function renderEditor({ mode, slug }) {
   if (!canEdit) {
     viewEl.innerHTML = `
@@ -1301,22 +1382,208 @@ function renderEditor({ mode, slug }) {
       <label>내용</label>
       <textarea id="edit-content" spellcheck="false">${escapeHtml(contentValue)}</textarea>
 
+      <!-- =====================================================
+           OCR UI
+           - 파일 선택
+           - OCR 실행
+           - 결과 확인
+           - 본문에 삽입 / 본문 끝에 추가
+      ====================================================== -->
+      <div class="ocr-panel">
+        <div class="ocr-head">
+          <div class="ocr-title">OCR</div>
+          <div class="ocr-help">이미지 속 글자를 추출해서 본문에 넣을 수 있어</div>
+        </div>
+
+        <div class="ocr-actions">
+          <input
+            id="ocr-file"
+            class="ocr-file-input"
+            type="file"
+            accept="image/*"
+          />
+          <button class="btn" type="button" id="ocr-run-btn">이미지에서 텍스트 추출</button>
+          <button class="btn" type="button" id="ocr-insert-btn" disabled>커서 위치에 삽입</button>
+          <button class="btn" type="button" id="ocr-append-btn" disabled>본문 끝에 추가</button>
+        </div>
+
+        <div class="ocr-status" id="ocr-status">
+          이미지를 선택한 뒤 "이미지에서 텍스트 추출"을 눌러줘.
+        </div>
+
+        <div class="ocr-progress" aria-hidden="true">
+          <span class="ocr-progress-bar" id="ocr-progress-bar"></span>
+        </div>
+
+        <img id="ocr-preview" class="ocr-preview" alt="OCR 미리보기" hidden />
+
+        <div class="ocr-result-wrap">
+          <div class="ocr-result-label">추출 결과 (필요하면 여기서 직접 정리한 뒤 본문에 넣어도 됨)</div>
+          <textarea
+            id="ocr-result"
+            class="ocr-result"
+            spellcheck="false"
+            placeholder="OCR 결과가 여기 표시돼."
+          ></textarea>
+        </div>
+      </div>
+
       <div class="editor-actions">
         <button class="btn primary" type="button" id="save-btn">저장</button>
         <button class="btn" type="button" id="cancel-btn">취소</button>
       </div>
-
-
     </div>
   `;
 
   const titleInput = document.getElementById("edit-title");
   const contentInput = document.getElementById("edit-content");
 
+  /* OCR 관련 DOM */
+  const ocrFileInput = document.getElementById("ocr-file");
+  const ocrRunBtn = document.getElementById("ocr-run-btn");
+  const ocrInsertBtn = document.getElementById("ocr-insert-btn");
+  const ocrAppendBtn = document.getElementById("ocr-append-btn");
+  const ocrStatus = document.getElementById("ocr-status");
+  const ocrProgressBar = document.getElementById("ocr-progress-bar");
+  const ocrPreview = document.getElementById("ocr-preview");
+  const ocrResult = document.getElementById("ocr-result");
+
+  let previewUrl = "";
+
+  function setOcrStatus(message) {
+    ocrStatus.textContent = message;
+  }
+
+  function setOcrProgress(percent) {
+    const value = Math.max(0, Math.min(100, Number(percent || 0)));
+    ocrProgressBar.style.width = `${value}%`;
+  }
+
+  function resetOcrResultState() {
+    ocrResult.value = "";
+    ocrInsertBtn.disabled = true;
+    ocrAppendBtn.disabled = true;
+    setOcrProgress(0);
+  }
+
+  /*
+    파일이 선택되면:
+    - 이전 결과 비움
+    - 새 이미지 미리보기 보여줌
+  */
+  ocrFileInput.addEventListener("change", () => {
+    const file = ocrFileInput.files?.[0];
+    resetOcrResultState();
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = "";
+    }
+
+    if (!file) {
+      ocrPreview.hidden = true;
+      ocrPreview.removeAttribute("src");
+      setOcrStatus('이미지를 선택한 뒤 "이미지에서 텍스트 추출"을 눌러줘.');
+      return;
+    }
+
+    previewUrl = URL.createObjectURL(file);
+    ocrPreview.src = previewUrl;
+    ocrPreview.hidden = false;
+    setOcrStatus(`선택된 파일: ${file.name}`);
+  });
+
+  /*
+    OCR 실행:
+    - 처음 한 번은 worker와 언어 데이터를 준비하느라 느릴 수 있음
+    - 결과는 먼저 아래 별도 textarea에 넣음
+  */
+  ocrRunBtn.addEventListener("click", async () => {
+    const file = ocrFileInput.files?.[0];
+
+    if (!file) {
+      alert("OCR할 이미지 파일을 먼저 선택해줘.");
+      return;
+    }
+
+    ocrRunBtn.disabled = true;
+    ocrInsertBtn.disabled = true;
+    ocrAppendBtn.disabled = true;
+    setOcrProgress(0);
+    setOcrStatus("OCR 준비 중이야... 처음 한 번은 조금 걸릴 수 있어.");
+
+    try {
+      const text = await runOcrFromFile(file, (message) => {
+        const status = String(message?.status || "");
+        const progress = typeof message?.progress === "number"
+          ? Math.round(message.progress * 100)
+          : 0;
+
+        setOcrProgress(progress);
+
+        if (status) {
+          setOcrStatus(`OCR 진행 중: ${status.replaceAll("_", " ")} ${progress ? `(${progress}%)` : ""}`);
+        }
+      });
+
+      const cleanedText = cleanupOcrText(text);
+      ocrResult.value = cleanedText;
+
+      if (cleanedText) {
+        ocrInsertBtn.disabled = false;
+        ocrAppendBtn.disabled = false;
+        setOcrProgress(100);
+        setOcrStatus("OCR이 끝났어. 결과를 확인한 뒤 본문에 넣어줘.");
+      } else {
+        setOcrStatus("문자를 거의 찾지 못했어. 해상도가 더 높은 이미지로 다시 시도해봐.");
+      }
+    } catch (error) {
+      console.error(error);
+      setOcrStatus("OCR 중 오류가 났어.");
+      alert(error?.message || "OCR 실행 중 오류가 났어.");
+    } finally {
+      ocrRunBtn.disabled = false;
+    }
+  });
+
+  /*
+    OCR 결과를 현재 커서 위치에 삽입
+  */
+  ocrInsertBtn.addEventListener("click", () => {
+    const text = cleanupOcrText(ocrResult.value);
+    if (!text) {
+      alert("삽입할 OCR 결과가 없어.");
+      return;
+    }
+
+    insertTextAtCursor(contentInput, text);
+    setOcrStatus("OCR 결과를 커서 위치에 삽입했어.");
+  });
+
+  /*
+    OCR 결과를 본문 끝에 덧붙이기
+  */
+  ocrAppendBtn.addEventListener("click", () => {
+    const text = cleanupOcrText(ocrResult.value);
+    if (!text) {
+      alert("추가할 OCR 결과가 없어.");
+      return;
+    }
+
+    contentInput.value = appendBlockText(contentInput.value, text);
+    contentInput.focus();
+    contentInput.selectionStart = contentInput.selectionEnd = contentInput.value.length;
+    setOcrStatus("OCR 결과를 본문 끝에 추가했어.");
+  });
+
   document.getElementById("save-btn").addEventListener("click", async () => {
     const newTitle = titleInput.value.trim();
     const newContent = contentInput.value;
-    if (!newTitle) return alert("제목을 입력해줘.");
+
+    if (!newTitle) {
+      alert("제목을 입력해줘.");
+      return;
+    }
 
     try {
       const newId = await savePage({
@@ -1333,18 +1600,24 @@ function renderEditor({ mode, slug }) {
   });
 
   document.getElementById("cancel-btn").addEventListener("click", () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = "";
+    }
+
     if (mode === "edit" && editing) location.hash = `#/page/${editing.id}`;
     else location.hash = "#/";
   });
 }
 
-/* =========================
+/* =========================================================
    Nav + Auth boot
-========================= */
+========================================================= */
 function bindUI() {
   document.querySelectorAll(".nav-btn[data-nav]").forEach(btn => {
     btn.addEventListener("click", () => {
       const nav = btn.getAttribute("data-nav");
+
       if (nav === "recent") location.hash = "#/recent";
       if (nav === "search") location.hash = "#/search";
       if (nav === "new") {
@@ -1373,7 +1646,9 @@ function bindUI() {
 }
 
 async function bootAuth() {
-  try { await getRedirectResult(auth); } catch { }
+  try {
+    await getRedirectResult(auth);
+  } catch { }
 
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
@@ -1392,7 +1667,9 @@ async function bootAuth() {
   });
 }
 
-/* start */
+/* =========================================================
+   start
+========================================================= */
 bindUI();
 buildChips();
 startListeners();

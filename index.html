@@ -33,7 +33,6 @@
         <div class="side-hint">클릭해서 열기</div>
       </div>
 
-      <!-- ✅ 카테고리 칩은 JS에서 생성 -->
       <div class="side-filters" id="category-chips"></div>
 
       <div class="side-search">
@@ -47,6 +46,13 @@
       <div id="view"></div>
     </section>
   </main>
+
+  <!-- OCR 라이브러리 -->
+  <!--
+    이 스크립트가 window.Tesseract 를 만들어 줌.
+    script.js 에서 이 전역 객체를 사용해 OCR worker를 생성할 거야.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <script src="projects-data.js"></script>
   <script type="module" src="script.js"></script>

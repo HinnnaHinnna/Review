@@ -13,7 +13,7 @@
 }
 
 * {
-  box-sizing: border-box
+  box-sizing: border-box;
 }
 
 html,
@@ -28,32 +28,28 @@ body {
   overflow-x: hidden;
 }
 
-/* ✅ Grid/Flex 아이템이 내용 때문에 폭을 못 줄이는 문제 해결 */
 .layout>* {
   min-width: 0;
 }
 
-/* ✅ 긴 URL/긴 단어가 화면을 늘리지 않도록 */
 .doc,
 .doc * {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-/* ✅ 링크도 길면 줄바꿈 */
 .doc a {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-/* ✅ 코드블록은 박스 안에서만 스크롤 */
 pre.code-block {
   max-width: 100%;
   overflow: auto;
 }
 
 .muted {
-  color: var(--muted)
+  color: var(--muted);
 }
 
 .top {
@@ -61,7 +57,7 @@ pre.code-block {
   top: 0;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
-  z-index: 10
+  z-index: 10;
 }
 
 .top-inner {
@@ -69,25 +65,25 @@ pre.code-block {
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px
+  padding: 14px 16px;
 }
 
 .site-title {
   margin: 0;
   font-size: 18px;
-  font-weight: 700
+  font-weight: 700;
 }
 
 .site-title a {
   color: inherit;
-  text-decoration: none
+  text-decoration: none;
 }
 
 .top-nav {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap
+  flex-wrap: wrap;
 }
 
 .nav-btn {
@@ -96,7 +92,7 @@ pre.code-block {
   padding: 8px 10px;
   border-radius: 999px;
   font-size: 13px;
-  cursor: pointer
+  cursor: pointer;
 }
 
 .nav-btn:hover {
@@ -114,7 +110,6 @@ pre.code-block {
   font-size: 12px;
   color: var(--muted);
   max-width: 42vw;
-  /* 화면 폭에 맞춰 적당히 제한 (원하면 숫자 조절) */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -123,35 +118,35 @@ pre.code-block {
 .layout {
   display: grid;
   grid-template-columns: var(--side-w) 1fr;
-  min-height: calc(100vh - 56px)
+  min-height: calc(100vh - 56px);
 }
 
 .side {
   border-right: 1px solid var(--line);
-  padding: 14px
+  padding: 14px;
 }
 
 .side-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 10px
+  margin-bottom: 10px;
 }
 
 .side-title {
-  font-weight: 700
+  font-weight: 700;
 }
 
 .side-hint {
   color: var(--muted);
-  font-size: 12px
+  font-size: 12px;
 }
 
 .side-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 10px
+  margin-bottom: 10px;
 }
 
 .chip {
@@ -160,14 +155,11 @@ pre.code-block {
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
-  cursor: pointer
+  cursor: pointer;
 }
 
-/* ✅ 카테고리 칩 hover 시 --link 색으로 */
 .chip:hover {
   background: var(--chip-active);
-  border-color: #d6d6ff
-    /* 배경이 진해지니까 글자는 흰색 추천 */
 }
 
 .chip:not(.is-active):hover {
@@ -188,37 +180,34 @@ pre.code-block {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   outline: none;
-  font-size: 13px
+  font-size: 13px;
 }
 
 .page-list {
   position: relative;
   margin: 12px 0 0 0;
-  /* (기존 margin 있으면 이걸로 통일) */
   padding: 0;
-  list-style: none
+  list-style: none;
 }
 
 .page-item {
   position: relative;
   padding: 10px 0;
   padding-left: 10px;
+  cursor: pointer;
 }
 
-/* 각 아이템 아래에 얇은 선(마지막 제외) */
 .page-item:not(:last-child)::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0px;
-  /* gap이 있으면 선 위치 조정 */
   height: 1px;
   background: var(--line);
 }
 
 .page-item:hover {
-  border-color: #d6d6d6;
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 3px;
@@ -239,16 +228,16 @@ pre.code-block {
 }
 
 .content {
-  padding: 18px 16px
+  padding: 18px 16px;
 }
 
 #view {
-  max-width: var(--content-max)
+  max-width: var(--content-max);
 }
 
 a {
   color: var(--link);
-  text-decoration: none
+  text-decoration: none;
 }
 
 a:hover {
@@ -269,14 +258,14 @@ a:hover {
   gap: 8px;
   color: var(--muted);
   font-size: 11px;
-  margin-bottom: 14px
+  margin-bottom: 14px;
 }
 
 .tools-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 14px 0 0 0
+  margin: 14px 0 0 0;
 }
 
 .tool-link {
@@ -288,7 +277,7 @@ a:hover {
   padding: 8px 10px;
   border-radius: 999px;
   font-size: 13px;
-  cursor: pointer
+  cursor: pointer;
 }
 
 .tool-link:hover {
@@ -301,7 +290,7 @@ a:hover {
 hr {
   border: none;
   border-top: 1px solid var(--line);
-  margin: 18px 0
+  margin: 18px 0;
 }
 
 blockquote {
@@ -309,32 +298,30 @@ blockquote {
   padding: 10px 12px;
   border-left: 4px solid var(--line);
   background: #fafafa;
-  border-radius: 10px
+  border-radius: 10px;
 }
 
 ul {
-  margin: 0 0 14px 18px
+  margin: 0 0 14px 18px;
 }
 
 ol {
-  margin: 0 0 14px 18px
+  margin: 0 0 14px 18px;
 }
 
-/* 각주 */
 sup.ref {
   font-size: 12px;
-  vertical-align: super
+  vertical-align: super;
 }
 
 ol.reflist {
-  margin: 8px 0 14px 20px
+  margin: 8px 0 14px 20px;
 }
 
 ol.reflist li {
-  margin-bottom: 6px
+  margin-bottom: 6px;
 }
 
-/* ✅ 코드(입력 예시) 스타일 */
 code.inline-code {
   background: #f7f7f7;
   border: 1px solid var(--line);
@@ -362,12 +349,12 @@ pre.code-block code {
 /* editor */
 .editor {
   display: grid;
-  gap: 10px
+  gap: 10px;
 }
 
 .editor label {
   font-size: 13px;
-  color: var(--muted)
+  color: var(--muted);
 }
 
 .editor input[type="text"] {
@@ -395,7 +382,7 @@ pre.code-block code {
 .editor .editor-actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap
+  flex-wrap: wrap;
 }
 
 .btn {
@@ -404,21 +391,25 @@ pre.code-block code {
   padding: 10px 12px;
   border-radius: 999px;
   font-size: 13px;
-  cursor: pointer
+  cursor: pointer;
 }
 
 .btn.primary {
   border-color: #c9c9ff;
-  background: #f2f2ff
+  background: #f2f2ff;
 }
 
-/* wiki image */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 figure.wiki-figure {
-  margin: 0 0 14px 0
+  margin: 0 0 14px 0;
 }
 
 .wiki-img-link {
-  display: inline-block
+  display: inline-block;
 }
 
 img.wiki-img {
@@ -426,20 +417,19 @@ img.wiki-img {
   max-width: 100%;
   height: auto;
   border: 1px solid var(--line);
-  border-radius: 12px
+  border-radius: 12px;
 }
 
 figcaption.wiki-caption {
   margin-top: 6px;
   color: var(--muted);
-  font-size: 12px
+  font-size: 12px;
 }
 
-/* image library in editor */
 .image-lib {
   display: grid;
   gap: 8px;
-  padding-top: 6px
+  padding-top: 6px;
 }
 
 .image-card {
@@ -449,7 +439,7 @@ figcaption.wiki-caption {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 10px;
-  background: #fff
+  background: #fff;
 }
 
 .image-thumb {
@@ -457,12 +447,12 @@ figcaption.wiki-caption {
   height: 64px;
   object-fit: cover;
   border-radius: 10px;
-  border: 1px solid var(--line)
+  border: 1px solid var(--line);
 }
 
 .image-meta {
   flex: 1;
-  min-width: 0
+  min-width: 0;
 }
 
 .image-name {
@@ -470,29 +460,21 @@ figcaption.wiki-caption {
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap
+  white-space: nowrap;
 }
 
 .image-sub {
   font-size: 12px;
-  color: var(--muted)
+  color: var(--muted);
 }
 
 .image-actions {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap
+  flex-wrap: wrap;
 }
 
-/* =========================
-   Hide/Collapse (MediaWiki-ish)
-   {{숨김 시작|제목=...}} ... {{숨김 끝}}
-========================= */
-/* =========================
-   Hide/Collapse (no box, link-like)
-========================= */
-
-/* ✅ 박스/배경/패딩 전부 제거 */
+/* 숨김 */
 details.mw-hide {
   margin: 0;
   padding: 0;
@@ -500,21 +482,17 @@ details.mw-hide {
   background: transparent;
 }
 
-/* ✅ summary를 링크처럼: 색만(--link), hover시 밑줄(--link) */
 details.mw-hide>summary {
   cursor: pointer;
   color: var(--link);
   font-weight: inherit;
-  /* 굵기 강제하지 않음 */
   list-style: none;
   text-decoration: none;
   padding: 0;
   margin: 0;
   padding-left: 0;
-  /* 기본 0 */
 }
 
-/* 마커 제거(브라우저 기본 삼각형) */
 details.mw-hide>summary::-webkit-details-marker {
   display: none;
 }
@@ -523,22 +501,12 @@ details.mw-hide>summary::marker {
   content: "";
 }
 
-/* hover 밑줄 + 밑줄 색 */
 details.mw-hide>summary:hover {
   text-decoration: underline;
   text-decoration-color: var(--link);
   text-underline-offset: 3px;
 }
 
-/* 본문도 스타일 최소화 */
-details.mw-hide .mw-hide-body {
-  margin: 0;
-  padding: 0;
-  padding-left: 18px;
-  /* [+] 포함한 폭과 맞추기 */
-}
-
-/* ✅ 접힘/펼침 표시: 기본은 [+], 열리면 [-] */
 details.mw-hide>summary::before {
   content: "[+] ";
 }
@@ -547,47 +515,151 @@ details.mw-hide[open]>summary::before {
   content: "[-] ";
 }
 
-/* ✅ 열렸을 때 summary 아래 간격(본문 시작 위쪽) 조절 */
 details.mw-hide[open]>summary {
   margin-bottom: 4px;
-  /* 제목-본문 사이 간격 */
 }
 
-/* ✅ 본문 영역: 위쪽 여백 최소 + 들여쓰기 */
 details.mw-hide .mw-hide-body {
   padding-left: 14px;
-  /* ✅ 들여쓰기(원하는 만큼 조절) */
   padding-top: 0px;
-  /* 필요하면 2px 정도로 */
 }
 
-/* ✅ 본문 첫 요소(p/ul/ol 등)의 기본 margin-top 제거 */
 details.mw-hide .mw-hide-body> :first-child {
   margin-top: 0;
 }
 
+/* =========================================================
+   OCR UI
+   - 편집 모드 안에서만 사용
+   - 이미지 업로드 -> OCR 실행 -> 결과 확인 -> 본문에 넣기
+========================================================= */
+.ocr-panel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: #fcfcfc;
+  display: grid;
+  gap: 10px;
+}
+
+.ocr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ocr-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ocr-help {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ocr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ocr-file-input {
+  width: 100%;
+  max-width: 360px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.ocr-status {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 1.4em;
+}
+
+.ocr-progress {
+  width: 100%;
+  height: 8px;
+  background: #efefef;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ocr-progress-bar {
+  display: block;
+  width: 0%;
+  height: 100%;
+  background: var(--links);
+  transition: width 0.15s ease;
+}
+
+.ocr-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 6px;
+}
+
+/* 중요:
+   hidden 속성이 붙은 미리보기는 반드시 안 보여야 해.
+   이 줄이 없으면 빈 img가 깨진 아이콘처럼 보일 수 있어.
+*/
+.ocr-preview[hidden] {
+  display: none !important;
+}
+
+.ocr-result-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.ocr-result-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ocr-result {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  outline: none;
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
 
 @media (max-width:960px) {
-
   .site-title {
     font-size: 16px;
     line-height: 20px;
   }
 
   .layout {
-    grid-template-columns: 1fr
+    grid-template-columns: 1fr;
   }
 
   .side {
     border-right: none;
-    border-bottom: 1px solid var(--line)
+    border-bottom: 1px solid var(--line);
   }
 
   .auth-pill {
     max-width: 20vw;
   }
 
-  /* ✅ 상단 영역이 길어서 밀리는 경우 */
   .top-inner {
     flex-wrap: wrap;
   }
@@ -595,15 +667,21 @@ details.mw-hide .mw-hide-body> :first-child {
   .top-nav {
     width: 100%;
   }
+
+  .ocr-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ocr-file-input {
+    max-width: none;
+  }
 }
 
-/* ✅ 큰 화면에서 레이아웃 폭 제한 + 가운데 정렬 */
 @media (min-width: 961px) {
   .layout {
     max-width: 1200px;
-    /* 원하는 폭 */
     margin: 0 auto;
-    /* 가운데 정렬 */
     padding-left: 24px;
     padding-right: 24px;
   }
