@@ -978,6 +978,22 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/fireba
         while (i < localLines.length) {
           const line = localLines[i];
           if (!line.trim()) {
+            /*
+              note.html과 동일한 단락 간격 처리:
+              편집 화면에서 빈 줄 하나를 입력하면 읽기 화면에서도
+              실제 한 줄 높이의 공백으로 보이게 한다.
+
+              문서 맨 앞/맨 뒤의 불필요한 빈 줄은 표시하지 않는다.
+            */
+            const hasContentBefore = out.length > 0;
+            const hasContentAfter = localLines
+              .slice(i + 1)
+              .some(nextLine => nextLine.trim());
+
+            if (hasContentBefore && hasContentAfter) {
+              out.push('<div class="blank-line" aria-hidden="true"></div>');
+            }
+
             i++;
             continue;
           }
@@ -1110,7 +1126,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/fireba
               buf.push(localLines[i].replace(/^>\s?/, ""));
               i++;
             }
-            out.push(`<blockquote>${buf.map(l => `<p>${renderInline(l)}</p>`).join("")}</blockquote>`);
+            out.push(`<blockquote>${buf.map(l => {
+              /*
+                note.html과 동일하게 > 만 입력한 줄은
+                인용문 내부의 빈 한 줄로 유지한다.
+              */
+              if (!l.trim()) return '<p class="quote-blank-line" aria-hidden="true"></p>';
+              return `<p>${renderInline(l)}</p>`;
+            }).join("")}</blockquote>`);
             continue;
           }
 
